@@ -2462,11 +2462,37 @@ input:checked + .slider:before {
         display: none; 
     }
 
-    /* History list grid in right column */
-    div[id$="-history-list"] {
+    /* History list grid in right column & Stock list */
+    div[id$="-history-list"],
+    .stock-list-container {
         display: grid !important;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
-        gap: 16px !important;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)) !important;
+        gap: 20px !important;
+    }
+
+    /* Inventory specific PC adjustments */
+    .inventory-header {
+        display: flex !important;
+        align-items: center !important;
+        gap: 24px !important;
+        margin-bottom: 24px !important;
+    }
+
+    .inventory-header .search-container {
+        flex: 0 1 400px !important;
+    }
+
+    .stock-card {
+        padding: 24px !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+
+    .stock-item-card {
+        padding: 16px !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05) !important;
+        background: white !important;
     }
 
     /* Keep Inventory and Ledger tabs in standard flow */
