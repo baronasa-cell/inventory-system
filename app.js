@@ -1833,9 +1833,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="header-left">
                     <span class="history-id">${id}</span>
                     ${(tab === 'sales' && item['売先']) ? `<span class="badge badge-buyer">${item['売先']}</span>` : ''}
-                    ${(tab === 'sales' && item['送料負担区分'] == 1) ? '<span class="badge" style="background:#e65100; color:white;">落札者負担</span>' : ''}
+                    ${(tab === 'sales' && item['送料負担区分'] == 1) ? '<span class="badge badge-warning">落札者負担</span>' : ''}
                     ${(tab === 'expense' && item['管理対象'] == 1) ? '<span class="badge badge-info"><ion-icon name="cube-outline"></ion-icon> 在庫対象</span>' : ''}
-                    ${(tab === 'expense' && item['レシート'] == 1) ? '<span class="badge" style="background:#546e7a; color:white;"><ion-icon name="receipt-outline"></ion-icon> レシート有</span>' : ''}
+                    ${(tab === 'expense' && item['レシート'] == 1) ? '<span class="badge badge-secondary"><ion-icon name="receipt-outline"></ion-icon> レシート有</span>' : ''}
                     ${(tab === 'manufacturing' && !['完了', 'キャンセル'].includes(item['ステータス'])) ? '<span class="badge badge-info">パーツ引当済</span>' : ''}
                     ${(tab === 'sales' && (item['管理対象外'] == 1 || item['管理区分'] == 1)) ? '<span class="badge badge-personal">個人利用</span>' : ''}
                     ${(tab === 'sales' && item['管理対象外'] != 1 && item['管理区分'] != 1 && !['キャンセル'].includes(item['ステータス'])) ? '<span class="badge badge-info">在庫引当済</span>' : ''}

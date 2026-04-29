@@ -50,7 +50,7 @@ body {
 /* Header */
 .glass-header {
     height: 56px;
-    padding: 0 20px;
+    padding: 0 10px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -131,7 +131,7 @@ body {
 #content-area {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 20px calc(var(--bottom-nav-height) + 24px);
+    padding: 24px 10px calc(var(--bottom-nav-height) + 24px);
     scroll-behavior: smooth;
 }
 
@@ -288,6 +288,18 @@ body {
     border: 1px solid rgba(79, 70, 229, 0.2);
 }
 
+.badge-warning {
+    background: rgba(230, 81, 0, 0.1);
+    color: #e65100;
+    border: 1px solid rgba(230, 81, 0, 0.2);
+}
+
+.badge-secondary {
+    background: rgba(84, 110, 122, 0.1);
+    color: #546e7a;
+    border: 1px solid rgba(84, 110, 122, 0.2);
+}
+
 /* Auto Process Info Box */
 .auto-process-info {
     background: rgba(22, 163, 74, 0.05);
@@ -432,7 +444,10 @@ body {
 .history-card-header .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
 }
 
 .summary-card {
@@ -2343,12 +2358,12 @@ input:checked + .slider:before {
         column-gap: 32px;
         row-gap: 8px; /* Slightly widened gap */
         align-items: start;
-        padding: 0 20px;
+        padding: 0 10px;
     }
 
     /* Main Area Scrollbar adjustment for PC */
     #content-area {
-        padding: 12px 20px calc(var(--bottom-nav-height) + 20px);
+        padding: 12px 10px calc(var(--bottom-nav-height) + 20px);
         font-size: 12px; /* Further reduction */
     }
 
@@ -2970,6 +2985,138 @@ input:checked + .slider:before {
     .mini-summary-card .val { font-size: 11px; }
     .nav-item span { font-size: 8px; }
     .glass-card { padding: 16px; }
+}
+
+/* --- iPhone / Mobile Layout Fixes (s0430-03, 04, 05) --- */
+@media screen and (max-width: 480px) {
+    /* 1. 在庫ヘッダーの最終調整 (重なり解消 ＋ 位置上げ) */
+    .inventory-header {
+        display: grid !important;
+        grid-template-columns: 1fr 120px !important; /* 右側の幅を広げて重なり防止 */
+        align-items: center !important;
+        gap: 12px !important; /* 隙間を確保 */
+        padding: 0 !important;
+        position: relative;
+    }
+    
+    .inventory-header .search-container {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    #stock-search-input {
+        width: 100% !important;
+        min-width: 0 !important;
+        border-radius: 20px !important; /* 端を確実に丸める */
+    }
+    
+    .inventory-toggles-wrapper {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+        flex: none !important;
+        align-items: flex-end !important;
+        transform: translateY(-10px) !important; /* 10px上に移動 */
+        min-width: 120px !important;
+    }
+
+    .show-hidden-container {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 6px !important;
+        width: 100% !important;
+    }
+    
+    .show-hidden-container span {
+        font-size: 10px !important;
+        color: var(--text-muted);
+        white-space: nowrap !important;
+    }
+
+    .switch {
+        transform: scale(0.8) !important;
+        margin: 0 !important;
+        flex: none !important;
+    }
+
+    /* 2. 期間セレクターのコンパクト化 (s0430-04) */
+    .filter-row {
+        gap: 6px !important;
+        overflow-x: visible !important;
+    }
+    
+    .segment-btn {
+        padding: 5px 6px !important;
+        font-size: 11px !important;
+        min-width: 40px !important;
+    }
+    
+    .mini-month-select {
+        padding: 4px !important;
+        font-size: 11px !important;
+        max-width: 80px;
+    }
+
+    /* 3. 取引履歴リストの最適化 (s0430-05) */
+    .transaction-item {
+        padding: 12px 0 !important;
+        gap: 10px !important;
+    }
+    
+    .transaction-item .type-icon {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 16px !important;
+    }
+    
+    .transaction-item .item-name-text {
+        font-size: 13px !important;
+        line-height: 1.3 !important;
+        margin-bottom: 2px !important;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        white-space: normal !important;
+    }
+    
+    .transaction-item .item-sub-meta {
+        font-size: 10px !important;
+        gap: 6px !important;
+    }
+    
+    .transaction-item .item-amount {
+        font-size: 14px !important;
+        font-weight: 700 !important;
+        min-width: 65px !important;
+        text-align: right !important;
+    }
+
+    /* 追記: 余白の圧縮 (s3.png 対策) */
+    #content-area {
+        padding-top: 14px !important; /* 10px詰める */
+    }
+
+    .inventory-header {
+        margin-bottom: 0px !important; /* 10px詰める */
+    }
+
+    /* 追記: カードヘッダーと下部余白の調整 */
+    .card-header-with-badge {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+    
+    .btn-confirm-stocktake {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+    }
+    
+    .ledger-list {
+        margin-bottom: 30px !important;
+    }
 }
 
 /* --- Feedback UI (Question 21) --- */
