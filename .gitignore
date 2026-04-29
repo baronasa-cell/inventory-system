@@ -1,0 +1,20 @@
+# GASビルド出力ディレクトリ
+/src/
+
+# 一時ファイル・キャッシュ
+/tmp/
+/scratch/
+.agents/
+
+# バックアップ用ディレクトリ
+*_backup/
+
+# エディタ設定（必要に応じてコメントアウトを外してください）
+.vscode/
+
+# OS固有のファイル
+Thumbs.db
+.DS_Store
+
+# GAS開発用の一時的なファイル
+backend_utf8.gs

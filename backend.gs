@@ -1,0 +1,1692 @@
+/**
+ * 統合管理システム - バックエンドAPI (Google Apps Script)
+ * VERSION: 0.6
+ */
+
+const SS = SpreadsheetApp.getActiveSpreadsheet();
+const AUTH_KEY = 'inventory-api-auth-8k2p9m';
+
+/**
+ * 1回のリクエスト内でのデータ再利用用キャッシュ
+ */
+const DataCache = {
+  values: {},
+  getValues: function(sheetName) {
+    if (!sheetName) return null;
+    if (!this.values[sheetName]) {
+      console.time('fetchSheet:' + sheetName);
+      const sheet = SS.getSheetByName(sheetName);
+      if (!sheet) return null;
+      
+      const lastRow = sheet.getLastRow();
+      if (lastRow === 0) return [];
+
+      const rawValues = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
+      
+      // 末尾の空行を完全に除去
+      let valuesLength = rawValues.length;
+      while (valuesLength > 0) {
+        const lastRowData = rawValues[valuesLength - 1];
+        const isRowEmpty = lastRowData.every(cell => cell === "" || cell === null || cell === undefined);
+        if (!isRowEmpty) break;
+        valuesLength--;
+      }
+      
+      const values = (valuesLength === rawValues.length) ? rawValues : rawValues.slice(0, valuesLength);
+      this.values[sheetName] = values;
+
+      console.timeEnd('fetchSheet:' + sheetName);
+      console.log(sheetName + ': Rows=' + values.length + ' (LastRow=' + lastRow + ')');
+      
+      if (sheetName === 'T_在庫管理') {
+        console.log('T_在庫管理: Final Rows=' + values.length);
+      }
+    }
+    return this.values[sheetName];
+  },
+  clear: function(sheetName) {
+    if (sheetName) delete this.values[sheetName];
+    else this.values = {};
+  }
+};
+
+/**
+ * google.script.run (本番環境) 用のエントリーポイント
+ */
+function apiEntryPoint(payload) {
+  if (!payload) return { status: 'error', message: 'Payload is empty' };
+  console.log('API Request (google.script.run):', payload.action);
+  
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    if (!spreadsheet) throw new Error('Spreadsheet not found or not accessible');
+    
+    const result = handleRequest(payload);
+    if (!result) {
+      console.error('handleRequest returned null for action:', payload.action);
+      return { status: 'error', message: 'Handler returned no data' };
+    }
+    
+    // GASのシリアライズ制限に配慮し、確実にプレーンなオブジェクトであることを保証
+    return JSON.parse(JSON.stringify(result));
+  } catch (e) {
+    console.error('API Entry Error:', e.toString(), e.stack);
+    return { status: 'error', message: 'Server Exception: ' + e.toString() };
+  }
+}
+
+/**
+ * POSTリクエストの処理 (ローカル開発/外部連携用)
+ */
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    const p = JSON.parse(e.postData.contents);
+    if (p.key !== AUTH_KEY) {
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Unauthorized' })).setMimeType(ContentService.MimeType.JSON);
+    }
+    const result = handleRequest(p);
+    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: e.toString() })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * リクエスト処理の共通ロジック
+ */
+function handleRequest(p) {
+  const action = p.action;
+  const payload = p;
+    
+    let result = { status: 'error', message: 'Unknown action' };
+
+    switch (action) {
+      case 'getMasters':
+        result = { status: 'success', data: fetchMasterData(p.includeInactive === true) };
+        break;
+      case 'getInitData':
+        var scope = p.scope || 'all';
+        result = { status: 'success', data: { masters: fetchMasterData(false), historyData: fetchHistoryData(scope) } };
+        break;
+      case 'verifyAndAddMaster':
+        result = verifyAndAddMaster(p.sheet, p.value);
+        break;
+      case 'registerTransaction':
+        result = registerTransaction(p.sheet, p.data, p.scope);
+        break;
+      case 'updateTransaction':
+        result = updateTransaction(p.id, p.updates, p.scope);
+        break;
+      case 'getHistory':
+        result = { status: 'success', data: fetchHistoryData() };
+        break;
+      case 'updateStockThreshold':
+        result = updateStockThreshold(p.itemName, p.threshold);
+        break;
+      case 'updateStockItemStatus':
+        result = updateStockItemStatus(p.itemName, p.status);
+        break;
+      case 'updateStockBulk':
+        result = updateStockBulk(p.thresholdUpdates, p.statusUpdates);
+        break;
+      case 'exportLedgerReport':
+        result = exportLedgerReport(p.period);
+        break;
+      case 'uploadProductImage':
+        result = uploadProductImage(p.itemName, p.base64);
+        break;
+      case 'registerStocktake':
+        result = registerStocktake(p.stocktakeData, p.note);
+        break;
+      case 'updateMasterRecord':
+        result = updateMasterRecord(p.masterName, p.id, p.updates);
+        break;
+    }
+
+    return result;
+}
+
+function doGet(e) {
+  // GETでもマスタ取得を可能にしておく
+  if (e.parameter && e.parameter.action === 'getMasters') {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'success',
+      data: fetchMasterData()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // WebAppの表示
+  return HtmlService.createTemplateFromFile('index')
+      .evaluate()
+      .setTitle('在庫・販売・利益 統合管理システム')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+
+/**
+ * トランザクション登録処理
+ */
+/**
+ * 各種取引の登録処理
+ * @param {string} scope 最新履歴を取得するスコープ（新規追加）
+ */
+function registerTransaction(sheetName, data, scope = 'all') {
+  const sheet = SS.getSheetByName(sheetName);
+  if (!sheet) throw new Error("Sheet not found: " + sheetName);
+
+  const headers = sheet.getDataRange().getValues()[0];
+  
+  // 1. 自動採番
+  const prefixes = { 'T_仕入': 'P', 'T_経費': 'E', 'T_製造': 'M', 'T_販売': 'S' };
+  const prefix = prefixes[sheetName];
+  const idValue = generateNextId(sheet, prefix);
+  let masterAdded = false;
+
+  // 2. ヘッダーに基づいたマッピング定義
+  const keyMap = {
+    'T_仕入': { '仕入ID': idValue, 'ステータス': 'status', '仕入日': 'date', '区分': 'category', '仕入先': 'vendor', '品名': 'item', '数量': 'quantity', '価格': 'price', '支払方法': 'payment', '備考': 'note' },
+    'T_経費': { '経費ID': idValue, 'ステータス': 'status', '注文日': 'date', '仕訳': 'account', '購入先': 'vendor', '品名': 'item', '数量': 'quantity', '合計金額': 'price', '支払方法': 'payment', 'レシート': 'receipt', '管理対象': 'isStock', '備考': 'note' },
+    'T_製造': { '製造ID': idValue, '品名': 'item', '数量': 'quantity', '製造開始日': 'date', '備考': 'note', 'ステータス': 'status' },
+    'T_販売': { 
+      '販売ID': idValue, '品名': 'item', '売先': 'buyer', '数量': 'quantity',
+      '発送方法': 'shipping', 'ステータス': 'status', '追跡番号': 'trackingNumber', '備考': 'note'
+    }
+  };
+
+  // 3. マスタ自動登録の実施とフラグ管理
+  if (sheetName === 'T_仕入') {
+    if (data.vendor) if (verifyAndAddMaster('M_仕入先', data.vendor, 1).added) masterAdded = true;
+    if (data.payment) if (verifyAndAddMaster('M_支払', data.payment).added) masterAdded = true;
+    if (data.item) {
+        if (verifyAndAddMaster('M_商品', data.item, data.category || 'パーツ').added) masterAdded = true;
+    }
+  } else if (sheetName === 'T_経費') {
+    if (data.vendor) if (verifyAndAddMaster('M_仕入先', data.vendor, 2).added) masterAdded = true;
+    if (data.payment) if (verifyAndAddMaster('M_支払', data.payment).added) masterAdded = true;
+    if (data.account) if (verifyAndAddMaster('M_仕訳', data.account).added) masterAdded = true;
+    if (data.item) {
+        if (data.isStock == 1) {
+            if (verifyAndAddMaster('M_商品', data.item, '経費').added) masterAdded = true;
+        } else {
+            if (verifyAndAddMaster('M_経費品名', data.item).added) masterAdded = true;
+        }
+    }
+  }
+
+  // 4. 販売時の追加計算（手数料等）
+  if (sheetName === 'T_販売') {
+    const sellers = getSheetDataAsObjects('M_売先');
+    const buyerRow = sellers.find(r => r['売先'] === data.buyer);
+    const rate = buyerRow ? (parseFloat(buyerRow['手数料率']) || 0) : 0;
+    data.commission = Math.round(data.price * rate);
+  }
+  data.updatedAt = new Date();
+
+  // 5. 在庫バリデーション
+  if (sheetName === 'T_販売' && (data.status === '取引開始' || data.status === '受注' || data.status === '開始' || data.status === '入金待ち')) {
+      const isPersonal = data.type === 'personal';
+      const prodMaster = getSheetDataAsObjects('M_商品');
+      const prodExists = prodMaster.some(r => r['品名'] === data.item);
+      
+      if (!(isPersonal && !prodExists)) {
+          const availability = checkStockAvailability(data.item, data.quantity);
+          if (!availability.ok) {
+              throw new Error(`在庫不足: ${data.item} が ${availability.shortage} 不足しています。`);
+          }
+      }
+  }
+  if (sheetName === 'T_製造' && (data.status === '製造開始' || data.status === '開始')) {
+      const availability = checkBOMAvailability(data.item, data.quantity);
+      if (!availability.ok) {
+          throw new Error(`部品不足: ${availability.message}`);
+      }
+  }
+
+  // 6. 元々の詳細なマッピングロジックでrowDataを生成
+  const mapping = keyMap[sheetName] || {};
+  const rowData = headers.map(raw_h => {
+    const h = raw_h ? raw_h.toString().trim() : "";
+    if (h === headers[0]) return idValue;
+    
+    if (sheetName === 'T_販売') {
+      if (h === '価格' || h === '販売価格') return data.price !== undefined ? data.price : "";
+      if (h === '送料') return data.shippingCost !== undefined ? data.shippingCost : 0;
+      if (h === '送料負担区分') {
+        const payer = data.shippingPayer || "出品者";
+        return payer === "落札者" ? 1 : 0;
+      }
+      if (h === '手数料') return data.commission !== undefined ? data.commission : 0;
+      if (h === '管理区分' || h === '管理対象外') return (data.type === 'personal') ? 1 : 0;
+      if (h === '販売開始日') {
+        if (data.date) {
+            return data.date.replace(/-/g, '/');
+        } else {
+            return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+        }
+      }
+      if (h === '合計単価') return ""; 
+    }
+    
+    if (sheetName === 'T_経費' && h === '管理対象') return data.isStock == 1 ? 1 : 0;
+
+    if (sheetName === 'T_仕入' && h === '入庫日' && (data.status === '入庫済み' || data.status === '入庫済')) {
+      return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+    }
+
+    const key = mapping[h];
+    if (typeof key === 'string' && data[key] !== undefined) {
+        let val = data[key];
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            val = val.replace(/-/g, '/');
+        }
+        return val;
+    }
+    
+    if (h === '単価' && data.price !== undefined && data.quantity) return roundTo2dp(data.price / data.quantity);
+    if (h === '最終更新日') return data.updatedAt || new Date();
+    
+    return "";
+  });
+
+  sheet.appendRow(rowData);
+  DataCache.clear(sheetName); 
+  
+  const newRowIdx = sheet.getLastRow();
+  if (sheetName === 'T_仕入' || sheetName === 'T_経費') formatColumn(sheet, newRowIdx, '単価', '0.00');
+
+  handleStatusLogic(sheetName, idValue, data.status, getRowAsObject(sheet, newRowIdx));
+
+  return { 
+    status: 'success', 
+    id: idValue, 
+    masterAdded: masterAdded, 
+    historyData: fetchHistoryData(scope) 
+  };
+}
+
+/**
+ * ステータス更新処理
+ */
+/**
+ * 取引履歴の更新（ステータス変更など）
+ * @param {string} scope 最新履歴を取得するスコープ（新規追加）
+ */
+function updateTransaction(id, updates, scope = 'all') {
+  const prefix = id.substring(0, 1);
+  const sheetMap = { 'P': 'T_仕入', 'E': 'T_経費', 'M': 'T_製造', 'S': 'T_販売' };
+  const sheetName = sheetMap[prefix];
+  const sheet = SS.getSheetByName(sheetName);
+  
+  const data = DataCache.getValues(sheetName); // キャッシュ利用
+  const rowIndex = data.findIndex(row => row[0].toString() === id.toString());
+  if (rowIndex === -1) throw new Error("ID not found: " + id);
+
+  const headers = data[0];
+  const statusColIndex = headers.indexOf('ステータス');
+  const oldStatus = data[rowIndex][statusColIndex];
+  const newStatus = updates.status;
+
+  if (newStatus) {
+    sheet.getRange(rowIndex + 1, statusColIndex + 1).setValue(newStatus);
+    
+    const todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+    let autofillLabel = "";
+    if (sheetName === 'T_仕入' && newStatus === '入庫済み') autofillLabel = '入庫日';
+    else if (sheetName === 'T_経費' && ['完了', 'キャンセル', '返品完了'].includes(newStatus)) autofillLabel = '完了日';
+    else if (sheetName === 'T_製造') {
+        const mapping = { '製造中': '製造着手日', 'テスト中': 'テスト開始日', '梱包中': '梱包開始日', '完了': '製造完了日' };
+        autofillLabel = mapping[newStatus];
+    } else if (sheetName === 'T_販売') {
+        const mapping = { '発送済み': '発送日', '受取済み': '受取日', '完了': '取引完了日' };
+        autofillLabel = mapping[newStatus];
+    }
+    
+    if (autofillLabel) {
+        const dateColIndex = headers.indexOf(autofillLabel);
+        if (dateColIndex !== -1) {
+            const currentVal = data[rowIndex][dateColIndex];
+            if (!updates.dates || !updates.dates[autofillLabel]) {
+                if (!currentVal) {
+                    sheet.getRange(rowIndex + 1, dateColIndex + 1).setValue(todayStr);
+                    if (!updates.dates) updates.dates = {};
+                    updates.dates[autofillLabel] = todayStr;
+                }
+            }
+        }
+    }
+  }
+
+  if (updates.dates) {
+    for (const label in updates.dates) {
+      const colIndex = headers.indexOf(label);
+      if (colIndex !== -1) {
+        let val = updates.dates[label];
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            val = val.replace(/-/g, '/');
+        }
+        sheet.getRange(rowIndex + 1, colIndex + 1).setValue(val);
+      }
+    }
+  }
+
+  if (oldStatus !== newStatus) {
+    const updatedRow = getRowAsObject(sheet, rowIndex + 1);
+    handleStatusLogic(sheetName, id, newStatus, updatedRow);
+  }
+  
+  if (sheetName === 'T_経費') formatColumn(sheet, rowIndex + 1, '単価', '0.00');
+
+  // 最終更新日の更新 (処理ルールに従い、最右部の列を更新)
+  const updatedColIndex = headers.indexOf('最終更新日');
+  if (updatedColIndex !== -1) {
+    sheet.getRange(rowIndex + 1, updatedColIndex + 1).setValue(new Date());
+  }
+  
+  DataCache.clear(sheetName); // 書き込み後にキャッシュをクリア
+
+  // 製造や販売の更新なら在庫も再計算
+  if (id.startsWith('M') || id.startsWith('S')) {
+    updateInventorySummary();
+  }
+
+  return { 
+    status: 'success', 
+    masterAdded: false,
+    historyData: fetchHistoryData(scope)
+  };
+}
+
+/**
+ * 在庫処理用のインメモリマネージャー
+ */
+const StockManager = {
+  sheet: null,
+  data: null,
+  headers: null,
+  newRows: [],
+  invIdPrefix: '',
+  invIdMaxNum: 0,
+  modifiedRows: new Set(), // 追加: 変更された行のインデックスを記録
+  isDataModified: false, // 追加: 既存行を書き換えたかどうかのフラグ
+  changedItems: new Set(), // 追加: 在庫が変動した品目の記録
+  
+  init: function() {
+    const sheetName = 'T_在庫管理';
+    this.sheet = SS.getSheetByName(sheetName);
+    this.data = DataCache.getValues(sheetName); // キャッシュ利用
+    this.headers = this.data[0].map(h => h ? h.toString().trim() : "");
+    this.newRows = [];
+    this.modifiedRows = new Set(); // 追加: 変更された行のインデックスを記録
+    this.isDataModified = false;
+    this.changedItems = new Set();
+    
+    const today = new Date();
+    const yyyymmdd = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+    this.invIdPrefix = `INV-${yyyymmdd}-`;
+    
+    const ids = this.data.slice(1).map(r => r[0].toString()).filter(id => id.startsWith(this.invIdPrefix));
+    this.invIdMaxNum = ids.reduce((max, id) => {
+      const parts = id.split('-');
+      const num = parseInt(parts[2]);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, 0);
+  },
+  
+  markModified: function(rowIndex) {
+    this.modifiedRows.add(rowIndex);
+    this.isDataModified = true;
+  },
+
+  getNextInvId: function() {
+    this.invIdMaxNum++;
+    return this.invIdPrefix + this.invIdMaxNum.toString().padStart(3, '0');
+  },
+  
+  appendRow: function(rowDataObj) {
+    const row = this.headers.map(h => {
+      if (rowDataObj[h] !== undefined) return rowDataObj[h];
+      if (h === '入出庫日' || h === '最終更新日') return new Date();
+      return "";
+    });
+    this.newRows.push(row);
+    if (rowDataObj['品名']) {
+      this.changedItems.add(rowDataObj['品名']);
+    }
+  },
+  
+  flush: function() {
+    // 既存行の更新 (差分更新)
+    if (this.isDataModified && this.modifiedRows.size > 0) {
+      this.modifiedRows.forEach(rowIdx => {
+        const rowData = this.data[rowIdx];
+        this.sheet.getRange(rowIdx + 1, 1, 1, this.headers.length).setValues([rowData]);
+      });
+      this.modifiedRows.clear();
+      this.isDataModified = false;
+    }
+
+    if (this.newRows.length > 0) {
+      const startRow = this.sheet.getLastRow() + 1;
+      this.sheet.getRange(startRow, 1, this.newRows.length, this.headers.length).setValues(this.newRows);
+      
+      const dateCol = this.headers.indexOf('入出庫日') + 1;
+      const priceCol = this.headers.indexOf('単価') + 1;
+      
+      if (dateCol > 0) this.sheet.getRange(startRow, dateCol, this.newRows.length, 1).setNumberFormat('yyyy/MM/dd');
+      if (priceCol > 0) this.sheet.getRange(startRow, priceCol, this.newRows.length, 1).setNumberFormat('0.00');
+      
+      // キャッシュ側にマージしておく（後続の集計用）
+      this.data = this.data.concat(this.newRows);
+      this.newRows = [];
+      DataCache.clear('T_在庫管理'); // 書き込みが発生したためクリア
+    }
+  }
+};
+
+/**
+ * ビジネスロジックの発火点
+ */
+function handleStatusLogic(sheetName, id, status, currentData) {
+  StockManager.init(); // 在庫管理シートを一括メモリ読み込み
+
+  if (sheetName === 'T_仕入' && (status === '入庫済み' || status === '入庫済' || status === '完了')) {
+    recordInventory(id, '仕入入庫', currentData['品名'], currentData['数量'], currentData['単価'] || (currentData['価格']/currentData['数量']) || 0, currentData['仕入先']);
+  }
+  
+  if (sheetName === 'T_製造' && status === '製造開始') {
+    const makeQty = parseFloat(currentData['数量']) || 0;
+    const itemName = currentData['品名'];
+    const totalMaterialCost = processManufacturingBOM(id, itemName, makeQty);
+    
+    if (makeQty > 0) {
+      const unitCost = roundTo2dp(totalMaterialCost / makeQty);
+      const sheet = SS.getSheetByName('T_製造');
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+      const colIdx = headers.indexOf('単価');
+      const data = sheet.getDataRange().getValues();
+      const rowIdx = data.findIndex(r => r[0] === id);
+      if (rowIdx !== -1 && colIdx !== -1) {
+        sheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
+        formatColumn(sheet, rowIdx + 1, '単価', '0.00');
+      }
+    }
+  }
+  
+  if (sheetName === 'T_製造' && status === '完了') {
+    const unitCost = parseFloat(currentData['単価']) || 0;
+    recordInventory(id, '製造入庫', currentData['品名'], currentData['数量'], unitCost, '自社');
+  }
+
+  if (sheetName === 'T_販売' && (status === '取引開始' || status === '入金待ち')) {
+    const isPersonal = currentData['管理対象外'] == 1 || currentData['管理区分'] == 1;
+    const productName = currentData['品名'];
+    const qty = parseFloat(currentData['数量']) || 0;
+    
+    const productMaster = SS.getSheetByName('M_商品').getDataRange().getValues();
+    const productExists = productMaster.slice(1).some(r => r[1] === productName);
+    
+    let unitCost = 0;
+    if (isPersonal && !productExists) {
+      unitCost = 0; 
+    } else {
+      try {
+        const totalCost = processFIFO(id, '販売出庫', productName, qty);
+        unitCost = qty > 0 ? roundTo2dp(totalCost / qty) : 0;
+      } catch (e) {
+        if (isPersonal) {
+          unitCost = 0; 
+        } else {
+          throw e; 
+        }
+      }
+    }
+    
+    const shippingMethod = currentData['発送方法'];
+    if (shippingMethod) {
+      const shippingExists = productMaster.slice(1).some(r => r[1] === shippingMethod);
+      if (shippingExists) {
+        try {
+          processFIFO(id, '販売出庫(梱包)', shippingMethod, 1);
+        } catch (e) {
+          throw new Error('梱包材の引当エラー: ' + e.message);
+        }
+      }
+    }
+    
+    const saleSheet = SS.getSheetByName('T_販売');
+    const sHeaders = saleSheet.getRange(1, 1, 1, saleSheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+    const sData = saleSheet.getDataRange().getValues();
+    const rowIdx = sData.findIndex(r => r[0] === id);
+    if (rowIdx !== -1) {
+      const colIdx = sHeaders.indexOf('合計単価');
+      if (colIdx !== -1) {
+          saleSheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
+          formatColumn(saleSheet, rowIdx + 1, '合計単価', '0.00');
+      }
+    }
+  }
+
+  if (sheetName === 'T_経費' && status === '完了') {
+    if (currentData['管理対象'] == 1) { 
+       const qty = parseFloat(currentData['数量']) || 1;
+       const price = parseFloat(currentData['合計金額']) || 0;
+       // 処理ルールに基づき、商品区分に「経費」を強制指定
+       recordInventory(id, '経費入庫', currentData['品名'], qty, price / qty, currentData['購入先'], '経費');
+    }
+  }
+  
+  if (status === 'キャンセル') {
+    if (sheetName === 'T_製造' || sheetName === 'T_販売') {
+      revertFIFO(id, '取消入庫');
+    }
+  }
+
+  if (status === '完了') {
+    syncToLedger(sheetName, id, currentData);
+  }
+
+  StockManager.flush(); // ここで1回だけT_在庫管理に上書き・追記
+  updateInventorySummary();
+  SpreadsheetApp.flush(); // 全ての書き込みを最後に確定
+}
+
+function appendInventoryRow(stockSheet, rowDataObj) {
+  // 古いAPI（StockManagerを使用しないレガシー用、今回は呼ばれない想定）
+  const headers = stockSheet.getDataRange().getValues()[0].map(h => h ? h.toString().trim() : "");
+  const row = headers.map(h => {
+    if (rowDataObj[h] !== undefined) return rowDataObj[h];
+    if (h === '入出庫日' || h === '最終更新日') return new Date();
+    return "";
+  });
+  stockSheet.appendRow(row);
+  const rowIdx = stockSheet.getLastRow();
+  formatColumn(stockSheet, rowIdx, '入出庫日', 'yyyy/MM/dd');
+  formatColumn(stockSheet, rowIdx, '単価', '0.00');
+}
+
+
+/**
+ * FIFO在庫引当エンジン（メモリ上で処理する最適化版）
+ */
+function processFIFO(triggerId, type, itemName, demandQty) {
+  const data = StockManager.data;
+  const headers = StockManager.headers;
+  const fCol = headers.indexOf('実在庫数量');
+  const dCol = headers.indexOf('入出庫日');
+  
+  let lots = [];
+  for (let i = 1; i < data.length; i++) {
+    const itemCol = headers.indexOf('品名');
+    if (itemCol !== -1 && data[i][itemCol] === itemName && data[i][fCol] > 0) {
+      lots.push({ rowIndex: i, data: data[i], date: data[i][dCol] }); // rowIndex is 0-based memory index
+    }
+  }
+  lots.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  let remaining = demandQty;
+  let totalCost = 0;
+
+  for (const lot of lots) {
+    const avail = lot.data[fCol];
+    const consume = Math.min(remaining, avail);
+    
+    const newAvail = avail - consume;
+    lot.data[fCol] = newAvail;
+    lot.data[headers.indexOf('引当完了')] = (newAvail <= 0 ? 1 : 0);
+    
+    // 修正: メモリ上のデータを更新し、変更行としてマーク
+    StockManager.data[lot.rowIndex] = lot.data;
+    StockManager.markModified(lot.rowIndex);
+    
+    const pCol = headers.indexOf('最終更新日');
+    if (pCol !== -1) {
+      StockManager.data[lot.rowIndex][pCol] = new Date();
+    }
+    
+    const unitPrice = lot.data[headers.indexOf('単価')] || 0;
+    totalCost += consume * unitPrice;
+    
+    const newId = StockManager.getNextInvId();
+    const rowObj = {
+      '在庫管理ID': newId,
+      '品名': itemName,
+      '商品区分': lot.data[headers.indexOf('商品区分')] || "",
+      '区分': type,
+      '数量': -consume,
+      '単価': unitPrice,
+      '仕入先': lot.data[headers.indexOf('仕入先')] || "",
+      '引当元管理ID': lot.data[0],
+      '引当完了': 1,
+      '実在庫数量': 0,
+      '備考': ""
+    };
+    if (triggerId) {
+      if (triggerId.startsWith('P')) rowObj['仕入ID'] = triggerId;
+      if (triggerId.startsWith('M')) rowObj['製造ID'] = triggerId;
+      if (triggerId.startsWith('S')) rowObj['販売ID'] = triggerId;
+    }
+    StockManager.appendRow(rowObj); // メモリに追加行を積む
+
+    remaining -= consume;
+    if (remaining <= 0) break;
+  }
+
+  if (remaining > 0) {
+    throw new Error(`在庫不足: ${itemName} が ${remaining} 不足しています。`);
+  }
+  
+  return totalCost;
+}
+
+function processManufacturingBOM(makeId, productName, makeQty) {
+  const bomSheet = SS.getSheetByName('M_BOM');
+  const bomData = getSheetDataAsObjects(bomSheet);
+  const components = bomData.filter(r => r['品名'] === productName);
+
+  let totalCost = 0;
+  components.forEach(comp => {
+    const needed = (parseFloat(comp['数量']) || 0) * makeQty;
+    if (needed > 0) {
+      totalCost += processFIFO(makeId, '製造引当', comp['部品'], needed);
+    }
+  });
+  return totalCost;
+}
+
+function recordInventory(refId, type, itemName, qty, unitPrice, vendorName = "", forceCategory = null) {
+  const newId = StockManager.getNextInvId();
+  
+  const pSheet = SS.getSheetByName('M_商品');
+  const pData = pSheet.getDataRange().getValues();
+  const pHeaders = pData[0].map(h => h.toString().trim());
+  const pRow = pData.slice(1).find(r => r[1] === itemName);
+  const catIdx = pHeaders.indexOf('カテゴリ') !== -1 ? pHeaders.indexOf('カテゴリ') : 2;
+  
+  // forceCategoryがあれば優先、なければマスタから取得
+  const category = forceCategory || (pRow ? pRow[catIdx] : ""); 
+
+  const rowObj = {
+    '在庫管理ID': newId,
+    '品名': itemName,
+    '商品区分': category,
+    '区分': type,
+    '数量': qty,
+    '単価': roundTo2dp(unitPrice),
+    '仕入先': vendorName,
+    '引当完了': 0,
+    '実在庫数量': qty,
+    '備考': ""
+  };
+  if (refId) {
+    if (refId.startsWith('P') || refId.startsWith('E')) rowObj['仕入ID'] = refId;
+    if (refId.startsWith('M')) rowObj['製造ID'] = refId;
+    if (refId.startsWith('S')) rowObj['販売ID'] = refId;
+  }
+  StockManager.appendRow(rowObj);
+}
+
+/**
+ * 帳簿連携 (T_帳簿)
+ */
+function syncToLedger(sheetName, id, data) {
+  if (sheetName === 'T_製造') return; // 製造は帳簿対象外
+  if (sheetName === 'T_販売' && (data['管理区分'] == 1 || data['管理対象外'] == 1)) return;
+
+  const ledgerSheet = SS.getSheetByName('T_帳簿');
+  const headers = ledgerSheet.getDataRange().getValues()[0].map(h => h.toString().trim());
+  
+  let row = new Array(headers.length).fill("");
+  
+  // 販売の場合は取引完了日を優先
+  if (sheetName === 'T_販売') {
+    row[0] = data['取引完了日'] || data['販売開始日'] || new Date();
+  } else {
+    row[0] = data['発注日'] || data['登録日'] || data['製造開始日'] || new Date(); 
+  }
+  
+  const price = parseFloat(data['合計金額'] || data['価格'] || data['販売価格'] || 0);
+
+  if (sheetName === 'T_販売') {
+    const buyer = data['売先'] || "";
+    const item = data['品名'] || "";
+    row[1] = buyer ? `${buyer} ${item}` : item; // 売先 + 品名
+    
+    row[2] = price; // 売上
+    row[3] = parseFloat(data['合計単価']) || 0; // 仕入（原価）
+    
+    const commFeeCol = headers.indexOf('通信費');
+    if (commFeeCol !== -1) {
+      row[commFeeCol] = parseFloat(data['送料']) || 0;
+    }
+    
+    const feeCol = headers.indexOf('支払手数料');
+    if (feeCol !== -1) {
+      row[feeCol] = parseFloat(data['手数料']) || 0;
+    }
+  } else if (sheetName === 'T_経費') {
+    const account = data['仕訳']; 
+    const qty = parseFloat(data['数量']) || 0;
+    const itemName = data['品名'] || "";
+    row[1] = (account ? account + " " : "") + itemName + (qty > 1 ? "×" + qty : "");
+
+    const colIndex = headers.indexOf(account);
+    if (colIndex >= 4) { 
+      row[colIndex] = price;
+    } else {
+      row[9] = price; 
+    }
+  }
+
+  ledgerSheet.appendRow(row);
+  formatColumn(ledgerSheet, ledgerSheet.getLastRow(), '日付', 'yyyy/MM/dd');
+}
+
+/**
+ * 在庫集計の再計算（メモリデータ活用版）
+ */
+function updateInventorySummary() {
+  if (!StockManager.changedItems || StockManager.changedItems.size === 0) {
+    return;
+  }
+
+  const sumSheet = SS.getSheetByName('T_在庫集計');
+  const sumData = sumSheet.getDataRange().getValues(); 
+  const sumHeaders = sumData[0].map(h => h.toString().trim());
+  
+  const data = StockManager.data || []; 
+  const headers = StockManager.headers || [];
+  
+  if (data.length < 2) return;
+
+  const summary = {};
+  const nameCol = headers.indexOf('品名');
+  const qtyCol = headers.indexOf('実在庫数量');
+  
+  const targetItems = StockManager.changedItems;
+  targetItems.forEach(name => summary[name] = 0);
+
+  // メモリ上の最新データから集計
+  for (let i = 1; i < data.length; i++) {
+    const name = data[i][nameCol];
+    if (targetItems.has(name)) {
+      summary[name] += (parseFloat(data[i][qtyCol]) || 0);
+    }
+  }
+  
+  const existingNames = new Set();
+  const pData = getSheetDataAsObjects('M_商品');
+
+  // 既存行の更新 (ピンポイント更新)
+  for (let i = 1; i < sumData.length; i++) {
+    const name = sumData[i][0];
+    if (!name) continue;
+    existingNames.add(name);
+    
+    if (summary[name] !== undefined) {
+      const currentQty = parseFloat(sumData[i][2]) || 0; 
+      const newQty = summary[name];
+      if (currentQty !== newQty) {
+        sumSheet.getRange(i + 1, 3).setValue(newQty); // 在庫数のみ更新
+        sumSheet.getRange(i + 1, 5).setValue(new Date()); // 更新日
+      }
+    }
+  }
+  
+  // 新規品目の追加
+  for (const name of targetItems) {
+    if (!existingNames.has(name)) {
+      const pRow = pData.find(r => r['品名'] === name);
+      const cat = pRow ? pRow['カテゴリ'] : "";
+
+      const newRow = new Array(sumHeaders.length).fill("");
+      newRow[0] = name; 
+      newRow[1] = cat;  
+      newRow[2] = summary[name]; 
+      newRow[3] = 10;   
+      newRow[4] = new Date(); 
+      newRow[5] = 1;    
+
+      sumSheet.appendRow(newRow);
+    }
+  }
+  DataCache.clear('T_在庫集計');
+}
+
+/**
+ * ID生成ヘルパー
+ */
+function generateNextId(sheet, prefix) {
+  if (prefix === 'INV') {
+    const today = new Date();
+    const yyyymmdd = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+    const fullPrefix = `INV-${yyyymmdd}-`;
+    const data = DataCache.getValues(sheet.getName()); // キャッシュ利用
+    if (!data || data.length < 2) return fullPrefix + "001";
+    const ids = data.slice(1).map(r => r[0].toString()).filter(id => id.startsWith(fullPrefix));
+    const maxNum = ids.reduce((max, id) => {
+      const parts = id.split('-');
+      const num = parseInt(parts[2]);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, 0);
+    return fullPrefix + (maxNum + 1).toString().padStart(3, '0');
+  }
+
+  if (prefix === 'A') {
+    const data = DataCache.getValues(sheet.getName()); // キャッシュ利用
+    if (!data || data.length < 2) return prefix + "0001";
+    const ids = data.slice(1).map(r => r[0].toString()).filter(id => id.startsWith(prefix));
+    const maxNum = ids.reduce((max, id) => {
+      const num = parseInt(id.replace(prefix, ""));
+      return isNaN(num) ? max : Math.max(max, num);
+    }, 0);
+    return prefix + (maxNum + 1).toString().padStart(4, '0');
+  }
+
+  const digits = (prefix === 'S') ? 5 : 4;
+  const data = DataCache.getValues(sheet.getName()); // キャッシュ利用
+  if (!data || data.length < 2) return prefix + "1".padStart(digits, '0');
+  
+  const ids = data.slice(1).map(r => r[0].toString());
+  const maxNum = ids.reduce((max, id) => {
+    const num = parseInt(id.replace(prefix, ""));
+    return isNaN(num) ? max : Math.max(max, num);
+  }, 0);
+  
+  return prefix + (maxNum + 1).toString().padStart(digits, '0');
+}
+
+/**
+ * 履歴データの取得（フィルタリング対応版）
+ */
+function fetchHistoryData(scope = 'all') {
+  console.time('fetchHistoryData');
+  
+  // 取得対象テーブルの決定
+  let tables = [];
+  if (scope === 'all' || scope === 'essential') {
+    tables = ['T_仕入', 'T_経費', 'T_製造', 'T_販売', 'T_帳簿'];
+  } else if (scope === 'purchase') {
+    tables = ['T_仕入'];
+  } else if (scope === 'expense') {
+    tables = ['T_経費'];
+  } else if (scope === 'manufacturing') {
+    tables = ['T_製造', 'T_在庫集計'];
+  } else if (scope === 'sales') {
+    tables = ['T_販売', 'T_在庫集計', 'T_帳簿'];
+  } else if (scope === 'inventory') {
+    tables = ['T_在庫集計'];
+  } else if (scope === 'ledger') {
+    tables = ['T_帳簿'];
+  }
+
+  // 完了ステータスの定義
+  const completedStatuses = {
+    'T_仕入': ['返品完了', '入庫済み', '入庫済', 'キャンセル'],
+    'T_経費': ['完了', '返品完了', 'キャンセル'],
+    'T_製造': ['完了', '製造完了', '梱包完了', 'キャンセル'],
+    'T_販売': ['完了', 'キャンセル']
+  };
+
+  const now = new Date();
+  const threshold40 = new Date(now.getTime() - (40 * 24 * 60 * 60 * 1000));
+  const threshold180 = new Date(now.getTime() - (180 * 24 * 60 * 60 * 1000));
+
+  const rawData = {};
+  tables.forEach(name => {
+    const values = DataCache.getValues(name);
+    if (!values || values.length < 2) {
+      rawData[name] = values;
+      return;
+    }
+
+    // フィルタリング（起動時以外、かつ履歴テーブルの場合のみ適用）
+    if (name.startsWith('T_') && name !== 'T_在庫集計') {
+      const headers = values[0];
+      const statusIdx = headers.indexOf('ステータス');
+      // 日付候補の列を探す
+      const dateCols = ['入庫日', '完了日', '取引完了日', '仕入日', '製造完了日', '販売開始日', '取引開始日', '製造開始日'];
+      let dateIdx = -1;
+      for (let col of dateCols) {
+        dateIdx = headers.indexOf(col);
+        if (dateIdx !== -1) break;
+      }
+
+      const threshold = (name === 'T_製造') ? threshold180 : threshold40;
+      const completed = completedStatuses[name] || ['完了', 'キャンセル'];
+
+      const filtered = [headers];
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        const status = (statusIdx !== -1) ? (row[statusIdx] || "").toString().trim() : "";
+        const isCompleted = completed.includes(status);
+        
+        // 条件1: 未完了なら必ず残す
+        if (!isCompleted && status !== "") {
+          filtered.push(row);
+          continue;
+        }
+
+        // 条件2: 完了済みなら日付をチェック
+        if (dateIdx !== -1) {
+          const d = new Date(row[dateIdx]);
+          if (!isNaN(d.getTime()) && d >= threshold) {
+            filtered.push(row);
+          }
+        } else {
+          // 日付列がない場合は念のため残す
+          filtered.push(row);
+        }
+      }
+      rawData[name] = filtered;
+    } else {
+      // 在庫集計などはそのまま
+      rawData[name] = values;
+    }
+  });
+
+  console.timeEnd('fetchHistoryData');
+  return { isRaw: true, rawData: rawData, scope: scope };
+}
+
+function getRowAsObject(sheet, rowIdx) {
+  const sheetName = typeof sheet === 'string' ? sheet : sheet.getName();
+  const data = DataCache.getValues(sheetName);
+  if (!data || data.length < rowIdx) {
+    const headers = SS.getSheetByName(sheetName).getDataRange().getValues()[0];
+    const vals = SS.getSheetByName(sheetName).getRange(rowIdx, 1, 1, headers.length).getValues()[0];
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = vals[i]);
+    return obj;
+  }
+  const headers = data[0];
+  const vals = data[rowIdx - 1];
+  const obj = {};
+  headers.forEach((h, i) => obj[h] = vals[i]);
+  return obj;
+}
+
+function formatColumn(sheet, rowIdx, headerName, formatString, cachedHeaders = null) {
+  const headers = cachedHeaders || sheet.getDataRange().getValues()[0];
+  const colIdx = headers.indexOf(headerName);
+  if (colIdx !== -1) {
+    sheet.getRange(rowIdx, colIdx + 1).setNumberFormat(formatString);
+  }
+}
+
+function roundTo2dp(val) {
+  if (val === null || val === undefined || isNaN(val)) return 0;
+  return Math.round(val * 100) / 100;
+}
+
+function fetchMasterData(includeInactive = false) {
+  console.time('fetchMasterData');
+  const targetSheets = [
+    'M_User', 'M_商品', 'M_仕入先', 'M_支払', 'M_売先', 'M_発送', 
+    'M_ステータス', 'M_カテゴリ', 'M_BOM', 'M_画面制御', 'M_経費品名', 'M_仕訳', 'T_在庫集計'
+  ];
+  const masters = {};
+  targetSheets.forEach(name => {
+    masters[name] = DataCache.getValues(name);
+  });
+  console.timeEnd('fetchMasterData');
+  return masters;
+}
+
+function getSheetDataAsObjects(sheet) {
+  const sheetName = typeof sheet === 'string' ? sheet : sheet.getName();
+  const data = DataCache.getValues(sheetName); 
+  if (!data || data.length < 2) return [];
+  const headers = data[0].map(h => (h ? h.toString().trim() : "")); 
+  return data.slice(1).filter(r => r.some(v => v !== "")).map(r => {
+    const obj = {};
+    headers.forEach((h, i) => { if (h) obj[h] = r[i]; });
+    return obj;
+  });
+}
+
+function applyMasterRules(records, includeInactive = false) {
+  let filtered = records;
+  if (!includeInactive && records.length > 0 && records[0].hasOwnProperty('使用FLG')) {
+    filtered = records.filter(r => r['使用FLG'] == 1 || r['使用FLG'] === true);
+  }
+  if (filtered.length > 0 && filtered[0].hasOwnProperty('表示順')) {
+    filtered.sort((a, b) => (parseInt(a['表示順']) || 0) - (parseInt(b['表示順']) || 0));
+  }
+  return filtered;
+}
+
+function verifyAndAddMaster(sheetName, valueToAdd, extraUsage = null) {
+  const data = DataCache.getValues(sheetName); // キャッシュ利用
+  const headers = data[0];
+  const existsIdx = data.findIndex((r, idx) => idx > 0 && r[1] === valueToAdd);
+  
+  if (existsIdx !== -1) {
+    if (sheetName === 'M_仕入先' && extraUsage !== null) {
+      const uCol = headers.indexOf('用途区分');
+      if (uCol !== -1) {
+        const currentUsage = parseInt(data[existsIdx][uCol]);
+        if (!isNaN(currentUsage) && currentUsage !== 3 && currentUsage !== extraUsage) {
+          sheet.getRange(existsIdx + 1, uCol + 1).setValue(3);
+        } else if (isNaN(currentUsage)) {
+          sheet.getRange(existsIdx + 1, uCol + 1).setValue(extraUsage);
+        }
+      }
+    } else if (sheetName === 'M_商品' && extraUsage !== null) {
+      const cleanHeaders = headers.map(h => h.toString().trim());
+      const catCol = cleanHeaders.indexOf('カテゴリ') !== -1 ? cleanHeaders.indexOf('カテゴリ') : 2;
+      if (!data[existsIdx][catCol]) {
+        sheet.getRange(existsIdx + 1, catCol + 1).setValue(extraUsage);
+      }
+    }
+    return { added: false, updated: true };
+  }
+  
+  const nextOrder = data.length > 1 ? Math.max(...data.slice(1).map(r => parseInt(r[0]) || 0)) + 10 : 10;
+  const newRow = Array(headers.length).fill("");
+  newRow[0] = nextOrder;
+  newRow[1] = valueToAdd;
+  
+  const cleanHeaders = headers.map(h => h.toString().trim());
+  const useFlagCol = cleanHeaders.indexOf('使用FLG');
+  if (useFlagCol !== -1) newRow[useFlagCol] = 1;
+  
+  if (sheetName === 'M_仕入先' && extraUsage !== null) {
+    const uCol = cleanHeaders.indexOf('用途区分');
+    if (uCol !== -1) newRow[uCol] = extraUsage;
+  } else if (sheetName === 'M_商品' && extraUsage !== null) {
+    const uCol = cleanHeaders.indexOf('カテゴリ') !== -1 ? cleanHeaders.indexOf('カテゴリ') : 2;
+    newRow[uCol] = extraUsage;
+  }
+  
+  
+  const sheet = SS.getSheetByName(sheetName);
+  sheet.appendRow(newRow);
+  DataCache.clear(sheetName); // キャッシュクリア
+  return { added: true };
+}
+
+function revertFIFO(triggerId, type) {
+  const stockSheet = SS.getSheetByName('T_在庫管理');
+  const data = stockSheet.getDataRange().getValues();
+  if (data.length < 2) return;
+  const headers = data[0].map(h => h.toString().trim());
+  
+  const idCol = headers.indexOf('在庫管理ID');
+  const qtyCol = headers.indexOf('数量');
+  const actualQtyCol = headers.indexOf('実在庫数量');
+  const statusCol = headers.indexOf('引当完了');
+  const refIdCol = headers.indexOf('引当元管理ID');
+  const updatedCol = headers.indexOf('最終更新日');
+  
+  let searchCol = -1;
+  if (triggerId.startsWith('M')) searchCol = headers.indexOf('製造ID');
+  else if (triggerId.startsWith('S')) searchCol = headers.indexOf('販売ID');
+  else if (triggerId.startsWith('P') || triggerId.startsWith('E')) searchCol = headers.indexOf('仕入ID');
+
+  if (searchCol === -1 || refIdCol === -1 || actualQtyCol === -1) {
+    return;
+  }
+
+  const deductions = [];
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][searchCol] === triggerId && (parseFloat(data[i][qtyCol]) || 0) < 0) {
+      deductions.push({ rowIdx: i + 1, data: data[i] });
+    }
+  }
+
+  const now = new Date();
+  deductions.forEach(deduction => {
+    const lot = deduction.data;
+    const sourceInvId = lot[refIdCol]; 
+    const qtyToRestore = Math.abs(parseFloat(lot[qtyCol]) || 0);
+
+    for (let j = 1; j < data.length; j++) {
+      if (data[j][idCol] === sourceInvId) {
+        const currentActual = parseFloat(data[j][actualQtyCol]) || 0;
+        const newActual = currentActual + qtyToRestore;
+        
+        stockSheet.getRange(j + 1, actualQtyCol + 1).setValue(newActual);
+        if (newActual > 0 && statusCol !== -1) {
+          stockSheet.getRange(j + 1, statusCol + 1).setValue(0); 
+        }
+        if (updatedCol !== -1) {
+          stockSheet.getRange(j + 1, updatedCol + 1).setValue(now);
+        }
+        break; 
+      }
+    }
+
+    const newId = generateNextId(stockSheet, 'INV');
+    const rowObj = {
+      '在庫管理ID': newId,
+      '品名': lot[headers.indexOf('品名')],
+      '商品区分': lot[headers.indexOf('商品区分')] || "",
+      '区分': type,
+      '数量': qtyToRestore,
+      '単価': parseFloat(lot[headers.indexOf('単価')]) || 0,
+      '仕入先': lot[headers.indexOf('仕入先')] || "",
+      '引当元管理ID': lot[idCol], 
+      '引当完了': 1,            
+      '実在庫数量': 0,          
+      '備考': lot[idCol] + ' の取消・復元'
+    };
+    if (triggerId.startsWith('M')) rowObj['製造ID'] = triggerId;
+    if (triggerId.startsWith('S')) rowObj['販売ID'] = triggerId;
+    
+    appendInventoryRow(stockSheet, rowObj);
+  });
+}
+
+function updateStockThreshold(itemName, newThreshold) {
+  const sheet = SS.getSheetByName('T_在庫集計');
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === itemName) {
+      sheet.getRange(i + 1, 4).setValue(newThreshold); 
+      sheet.getRange(i + 1, 5).setValue(new Date());   
+      return { status: 'success' };
+    }
+  }
+  return { status: 'error', message: 'Item not found in summary' };
+}
+
+function updateStockItemStatus(itemName, newStatus) {
+  const sheet = SS.getSheetByName('T_在庫集計');
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === itemName) {
+      sheet.getRange(i + 1, 6).setValue(newStatus); 
+      sheet.getRange(i + 1, 5).setValue(new Date()); 
+      return { status: 'success' };
+    }
+  }
+  return { status: 'error', message: 'Item not found in summary' };
+}
+
+function updateStockBulk(thresholdUpdates, statusUpdates) {
+  try {
+    const sheet = SS.getSheetByName('T_在庫集計');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const now = new Date();
+    
+    // アイテム名を行インデックスのマップに変換
+    const itemMap = {};
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0]) itemMap[data[i][0]] = i + 1;
+    }
+    
+    // 閾値の更新
+    if (thresholdUpdates) {
+      for (const itemName in thresholdUpdates) {
+        const rowIdx = itemMap[itemName];
+        if (rowIdx) {
+          sheet.getRange(rowIdx, 4).setValue(thresholdUpdates[itemName]);
+          sheet.getRange(rowIdx, 5).setValue(now);
+        }
+      }
+    }
+    
+    // ステータスの更新
+    if (statusUpdates) {
+      for (const itemName in statusUpdates) {
+        const rowIdx = itemMap[itemName];
+        if (rowIdx) {
+          sheet.getRange(rowIdx, 6).setValue(statusUpdates[itemName]);
+          sheet.getRange(rowIdx, 5).setValue(now);
+        }
+      }
+    }
+    
+    SpreadsheetApp.flush();
+    return { status: 'success' };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+/**
+ * 帳簿データのエクスポート (新しいスプレッドシートとして保存)
+ */
+function exportLedgerReport(period) {
+  try {
+    const ledgerSheet = SS.getSheetByName('T_帳簿');
+    if (!ledgerSheet) throw new Error("帳簿シートが見つかりません。");
+
+    const data = getSheetDataAsObjects(ledgerSheet);
+    const [selY, selM] = period.split('-');
+
+    const filtered = data.filter(row => {
+      const date = new Date(row['日付']);
+      if (isNaN(date.getTime())) return false;
+      const y = date.getFullYear();
+      const m = date.getMonth() + 1;
+      const ym = `${y}-${String(m).padStart(2, '0')}`;
+
+      if (selY !== String(y)) return false;
+      if (selM === 'FY') return true;
+      if (selM === 'Q1') return (m >= 1 && m <= 3);
+      if (selM === 'Q2') return (m >= 4 && m <= 6);
+      if (selM === 'Q3') return (m >= 7 && m <= 9);
+      if (selM === 'Q4') return (m >= 10 && m <= 12);
+      return ym === period;
+    });
+
+    if (filtered.length === 0) return { status: 'error', message: '対象期間にデータがありません。' };
+
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
+    let periodName = period;
+    if (selM === 'FY') periodName = selY + "年度";
+    else if (selM.startsWith('Q')) periodName = selY + "年第" + selM.substring(1) + "四半期";
+    else periodName = selY + "年" + selM + "月";
+
+    const fileName = `帳簿レポート_${periodName}_${timestamp}`;
+    const newSS = SpreadsheetApp.create(fileName);
+    const newSheet = newSS.getSheets()[0];
+    newSheet.setName('レポート');
+
+    newSheet.getRange(1, 1).setValue(`${periodName} 帳簿`).setFontSize(14).setFontWeight('bold');
+
+    const rawHeaders = ledgerSheet.getRange(1, 1, 1, 10).getValues()[0];
+    const headers = [...rawHeaders, '粗利'];
+    newSheet.getRange(2, 1, 1, 11).setValues([headers]).setFontWeight('bold').setBackground('#f3f3f3');
+
+    const rows = filtered.map(r => {
+      const s = parseNumber(r['売上']);
+      const p = parseNumber(r['仕入']);
+      const c = parseNumber(r['通信費']);
+      const rs = parseNumber(r['修繕費']);
+      const sp = parseNumber(r['消耗品費']);
+      const d = parseNumber(r['諸会費']);
+      const f = parseNumber(r['支払手数料']);
+      const ms = parseNumber(r['雑費']);
+      const profit = s - (p + c + rs + sp + d + f + ms);
+
+      return [
+        r['日付'], r['品名'], s, p, c, rs, sp, d, f, ms, profit
+      ];
+    });
+    newSheet.getRange(3, 1, rows.length, 11).setValues(rows);
+
+    const lastRow = rows.length + 3;
+    newSheet.getRange(lastRow, 1).setValue('合計').setFontWeight('bold');
+    
+    for (let col = 3; col <= 11; col++) {
+      const colLetter = String.fromCharCode(64 + col);
+      newSheet.getRange(lastRow, col).setFormula(`=SUM(${colLetter}3:${colLetter}${lastRow - 1})`).setFontWeight('bold');
+    }
+
+    newSheet.setColumnWidth(2, 370);
+    for (let i = 3; i <= 11; i++) {
+        newSheet.setColumnWidth(i, 55);
+    }
+    
+    newSheet.getRange(3, 2, rows.length).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+
+    newSheet.getRange(3, 1, rows.length + 1, 1).setNumberFormat('yyyy/MM/dd');
+    newSheet.getRange(3, 3, rows.length + 1, 9).setNumberFormat('#,##0');
+    newSheet.setFrozenRows(2);
+
+    return { status: 'success', url: newSS.getUrl(), fileName: fileName };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+/**
+ * 汎用数値変換 (GAS backend用)
+ */
+function parseNumber(val) {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === 'number') return val;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, "")
+                  .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
+ * 商品画像のアップロードとM_商品への反映
+ */
+function uploadProductImage(itemName, base64Data) {
+  try {
+    const folder = getOrCreateImageFolder();
+    const contentType = base64Data.substring(5, base64Data.indexOf(';'));
+    const bytes = Utilities.base64Decode(base64Data.split(',')[1]);
+    const blob = Utilities.newBlob(bytes, contentType, itemName + ".jpg");
+
+    // 既存の同名ファイルを検索（あれば上書きのために削除）
+    const existingFiles = folder.getFilesByName(itemName + ".jpg");
+    while (existingFiles.hasNext()) {
+      existingFiles.next().setTrashed(true);
+    }
+
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // thumbnail URL (300px) もしくは 直接の表示URL
+    const imageUrl = "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w500";
+
+    // M_商品 シートの更新 (B列が品名、F列が画像URL)
+    const pSheet = SS.getSheetByName('M_商品');
+    const data = pSheet.getDataRange().getValues();
+    const headers = data[0];
+    const itemColIdx = headers.indexOf('品名');
+    let urlColIdx = headers.indexOf('画像URL');
+
+    // 画像URL列がなければF列(インデックス5)に作成
+    if (urlColIdx === -1) {
+      urlColIdx = 5;
+      pSheet.getRange(1, urlColIdx + 1).setValue('画像URL');
+    }
+
+    let found = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][itemColIdx] === itemName) {
+        pSheet.getRange(i + 1, urlColIdx + 1).setValue(imageUrl);
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      return { status: 'error', message: 'M_商品に該当品名が見つかりません: ' + itemName };
+    }
+
+    return { status: 'success', url: imageUrl };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+/**
+ * 画像保存用のフォルダを取得または作成
+ */
+function getOrCreateImageFolder() {
+  const folderName = "統合システム_商品画像";
+  const folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  } else {
+    return DriveApp.createFolder(folderName);
+  }
+}
+
+
+/**
+ * 権限承認専用の関数
+ */
+function authorizeDrive() {
+  const dummy = DriveApp.createFolder("承認用一時フォルダ");
+  dummy.setTrashed(true);
+  console.log("ドライブの作成・書き込み権限が承認されました。");
+}
+
+/**
+ * 単品アイテムの在庫充足チェック
+ */
+function checkStockAvailability(itemName, demandQty) {
+  const sheet = SS.getSheetByName('T_在庫集計');
+  if (!sheet) return { ok: true }; 
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const nameCol = headers.indexOf('品名');
+  const qtyCol = headers.indexOf('現在庫数');
+  
+  if (nameCol === -1 || qtyCol === -1) return { ok: true };
+
+  const row = data.find(r => r[nameCol] === itemName);
+  const currentQty = row ? (parseFloat(row[qtyCol]) || 0) : 0;
+
+  if (currentQty < demandQty) {
+    return { ok: false, shortage: (demandQty - currentQty).toLocaleString() };
+  }
+  return { ok: true };
+}
+
+/**
+ * 製造（BOM）に基づく部品全体の在庫充足チェック
+ */
+function checkBOMAvailability(productName, makeQty) {
+  const bomSheet = SS.getSheetByName('M_BOM');
+  if (!bomSheet) return { ok: true };
+
+  const bomData = getSheetDataAsObjects(bomSheet);
+  const components = bomData.filter(r => r['品名'] === productName);
+  
+  if (components.length === 0) return { ok: true };
+
+  for (const comp of components) {
+    const compName = comp['部品'];
+    const needed = (parseFloat(comp['数量']) || 0) * makeQty;
+    const res = checkStockAvailability(compName, needed);
+    if (!res.ok) {
+      return { ok: false, message: `${compName} があと ${res.shortage} 不足しています` };
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * 棚卸登録処理
+ * @param {Array} stocktakeData {itemName, actualQty, logicalQty, diff} の配列
+ * @param {string} note 備考
+ */
+function registerStocktake(stocktakeData, note) {
+  const stockSheet = SS.getSheetByName('T_在庫管理');
+  const histSheet = SS.getSheetByName('T_棚卸履歴');
+  if (!stockSheet || !histSheet) return { status: 'error', message: 'シートが見つかりません' };
+
+  const timestamp = new Date();
+  const dateOnly = Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd");
+  const adjId = generateNextId(histSheet, 'A');
+  
+  // 1. 棚卸履歴の保存
+  const totalItems = stocktakeData.length;
+  const diffItems = stocktakeData.filter(d => d.diffQty !== 0).length;
+  
+  histSheet.appendRow([
+    adjId,
+    timestamp,
+    totalItems,
+    diffItems,
+    note
+  ]);
+
+  // 2. 在庫調整の実行
+  const summarySheet = SS.getSheetByName('T_在庫集計');
+  const summaryData = summarySheet.getDataRange().getValues();
+  const summaryItemMap = {};
+  for (let i = 1; i < summaryData.length; i++) {
+    if (summaryData[i][0]) summaryItemMap[summaryData[i][0]] = i + 1;
+  }
+
+  stocktakeData.forEach(adj => {
+    // 差異の有無に関わらず、最終棚卸日を更新 (G列: インデックス7)
+    const rowIdx = summaryItemMap[adj.itemName];
+    if (rowIdx) {
+      summarySheet.getRange(rowIdx, 7).setValue(timestamp);
+    }
+
+    if (adj.diffQty === 0) return; // 差異がないものは在庫管理レコードの追加をスキップ
+
+    if (adj.diffQty > 0) {
+      // プラス調整：新規ロットとして追加
+      processSurplusAdjustment(adj, adjId, timestamp, dateOnly);
+    } else {
+      // マイナス調整：既存在庫からFIFOで消し込み
+      processShortageAdjustment(adj, adjId, timestamp, dateOnly);
+    }
+  });
+
+  // 3. 在庫集計の更新（在庫数のみ）
+  updateInventorySummary();
+  SpreadsheetApp.flush();
+
+  return { status: 'success', adjId: adjId };
+}
+
+/**
+ * プラス調整：最新単価を引き継いで新規入庫
+ */
+function processSurplusAdjustment(adj, adjId, timestamp, dateOnly) {
+  const stockSheet = SS.getSheetByName('T_在庫管理');
+  const data = stockSheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  // マスタからカテゴリ取得（recordInventory関数と同じ方式）
+  const pSheet = SS.getSheetByName('M_商品');
+  const pData = pSheet ? pSheet.getDataRange().getValues() : [];
+  const pRow = pData.slice(1).find(r => r[1] === adj.itemName);
+  const category = pRow ? (pRow[2] || "") : "";
+
+  // 最新単価とその元在庫管理IDの取得
+  let latestPrice = 0;
+  let latestSourceId = "";
+  const nameCol = headers.indexOf('品名');
+  const priceCol = headers.indexOf('単価');
+  const idCol = headers.indexOf('在庫管理ID');
+  for (let i = data.length - 1; i > 0; i--) {
+    if (data[i][nameCol] === adj.itemName && (parseFloat(data[i][priceCol]) || 0) > 0) {
+      latestPrice = parseFloat(data[i][priceCol]);
+      latestSourceId = data[i][idCol] || "";
+      break;
+    }
+  }
+
+  const id = generateNextId(stockSheet, 'INV');
+  const newRow = new Array(headers.length).fill("");
+  
+  newRow[headers.indexOf('在庫管理ID')] = id;
+  newRow[headers.indexOf('品名')] = adj.itemName;
+  newRow[headers.indexOf('商品区分')] = category;
+  newRow[headers.indexOf('入出庫日')] = dateOnly;
+  newRow[headers.indexOf('区分')] = '棚卸入庫';
+  newRow[headers.indexOf('数量')] = adj.diffQty; 
+  newRow[headers.indexOf('単価')] = latestPrice;
+  newRow[headers.indexOf('棚卸ID')] = adjId;
+  newRow[headers.indexOf('仕入先')] = '棚卸調整';
+  newRow[headers.indexOf('引当元管理ID')] = latestSourceId;
+  newRow[headers.indexOf('引当完了')] = 0; // 在庫が増えるため、完了ではない
+  newRow[headers.indexOf('実在庫数量')] = adj.diffQty; 
+  newRow[headers.indexOf('備考')] = `実${adj.actualQty}(理${adj.logicalQty})`;
+  newRow[headers.indexOf('最終更新日')] = timestamp;
+
+  stockSheet.appendRow(newRow);
+}
+
+
+/**
+ * マイナス調整：既存在庫からFIFOで消し込み
+ */
+function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
+  const stockSheet = SS.getSheetByName('T_在庫管理');
+  const data = stockSheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  const nameCol = headers.indexOf('品名');
+  const actualQtyCol = headers.indexOf('実在庫数量');
+  const unitPriceCol = headers.indexOf('単価');
+  const statusCol = headers.indexOf('引当完了');
+  const idCol = headers.indexOf('在庫管理ID');
+  
+  let shortageLeft = Math.abs(adj.diffQty);
+  const adjustments = [];
+
+  // 有効なロットを古い順に探す
+  for (let i = 1; i < data.length; i++) {
+    if (shortageLeft <= 0) break;
+    
+    if (data[i][nameCol] === adj.itemName && (parseFloat(data[i][actualQtyCol]) || 0) > 0) {
+      const rowNum = i + 1;
+      const available = parseFloat(data[i][actualQtyCol]);
+      const consume = Math.min(available, shortageLeft);
+      const unitPrice = parseFloat(data[i][unitPriceCol]) || 0;
+      const sourceId = data[i][idCol];
+
+      // 元行の実在庫を減らす
+      const newActual = available - consume;
+      stockSheet.getRange(rowNum, actualQtyCol + 1).setValue(newActual);
+      if (newActual === 0) {
+        stockSheet.getRange(rowNum, statusCol + 1).setValue(1);
+      }
+
+      // 調整行のデータを準備
+      adjustments.push({
+        sourceId: sourceId,
+        qty: -consume,
+        price: unitPrice
+      });
+
+      shortageLeft -= consume;
+    }
+  }
+
+  // マスタからカテゴリ取得（棚卸入庫やrecordInventoryと同じ方式）
+  const pSheet = SS.getSheetByName('M_商品');
+  const pData = pSheet ? pSheet.getDataRange().getValues() : [];
+  const pRow = pData.slice(1).find(r => r[1] === adj.itemName);
+  const category = pRow ? (pRow[2] || "") : "";
+
+  // 調整行（証拠）の追加
+  adjustments.forEach(item => {
+    const id = generateNextId(stockSheet, 'INV');
+    const newRow = new Array(headers.length).fill("");
+    
+    newRow[headers.indexOf('在庫管理ID')] = id;
+    newRow[headers.indexOf('品名')] = adj.itemName;
+    newRow[headers.indexOf('商品区分')] = category;
+    newRow[headers.indexOf('入出庫日')] = dateOnly;
+    newRow[headers.indexOf('区分')] = '棚卸出庫';
+    newRow[headers.indexOf('数量')] = item.qty;
+    newRow[headers.indexOf('単価')] = item.price;
+    newRow[headers.indexOf('棚卸ID')] = adjId;
+    newRow[headers.indexOf('仕入先')] = '棚卸調整';
+    newRow[headers.indexOf('引当元管理ID')] = item.sourceId;
+    newRow[headers.indexOf('引当完了')] = 1;
+    newRow[headers.indexOf('備考')] = `実${adj.actualQty}(理${adj.logicalQty})`;
+    newRow[headers.indexOf('最終更新日')] = timestamp;
+
+    stockSheet.appendRow(newRow);
+  });
+}
+
+/**
+ * マスタデータの汎用更新
+ * 第一列をIDとして検索し、該当行のデータを更新する
+ */
+function updateMasterRecord(masterName, id, updates) {
+  try {
+    const sheet = SS.getSheetByName(masterName);
+    if (!sheet) throw new Error("Master sheet not found: " + masterName);
+    
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const rowIndex = data.findIndex((row, idx) => idx > 0 && row[0].toString() == id.toString());
+    
+    if (rowIndex === -1) throw new Error("ID not found: " + id);
+    
+    for (const key in updates) {
+      const colIdx = headers.indexOf(key);
+      if (colIdx !== -1) {
+        sheet.getRange(rowIndex + 1, colIdx + 1).setValue(updates[key]);
+      }
+    }
+    
+    SpreadsheetApp.flush();
+    return { status: 'success' };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+ 
