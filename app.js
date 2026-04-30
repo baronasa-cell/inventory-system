@@ -206,22 +206,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             // フィルタリング（期間とステータス）
             const filtered = records.filter(r => {
                 const status = (r['ステータス'] || "").toString().trim();
+                
+                // 終了済みステータスの判定
+                let isFinished = excludeList.includes(status);
+                if (sheetName === 'T_製造') {
+                    isFinished = isFinished || (status === '製造完了' || status === '梱包完了');
+                }
+
+                // 未完了（進行中）の案件は、期間に関わらずすべて表示する
+                if (!isFinished) return true;
+
+                // 完了済みのものは、完了日等の日付ベースで期間チェック
                 const dateVal = r['入庫日'] || r['完了日'] || r['取引完了日'] || r['仕入日'] || r['製造完了日'] || r['販売開始日'] || r['製造開始日'] || "";
                 const d = new Date(dateVal);
                 if (isNaN(d.getTime())) return true;
 
                 if (sheetName === 'T_製造') {
-                    const isFinished = (status === '完了' || status === 'キャンセル' || status === '製造完了' || status === '梱包完了');
-                    if (!isFinished) return true;
-                    return d >= mThresholdDate;
+                    return d >= mThresholdDate; // 製造の完了分は180日
                 }
-                return d >= thresholdDate;
+                return d >= thresholdDate; // その他は40日
             });
 
-            // 統計計算
+            // 統計計算（今月の集計用）
             filtered.forEach(r => {
                 const status = (r['ステータス'] || "").toString().trim();
-                const dateVal = r['入庫日'] || r['完了日'] || r['取引完了日'] || r['仕入日'] || r['製造完了日'] || r['販売開始日'] || r['製造開始日'] || "";
+                // 集計用には、完了日よりも「発生日（注文日や登録日）」を優先する（今月の活動として計上するため）
+                const dateVal = r['注文日'] || r['登録日'] || r['日付'] || r['仕入日'] || r['開始日'] || r['製造開始日'] || r['販売開始日'] || r['完了日'] || "";
                 const d = new Date(dateVal);
                 if (isNaN(d.getTime())) return;
 
@@ -751,7 +761,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         } else if (elmId === 'make-item') {
                             masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === 'パーツ2');
                         } else if (elmId === 'sale-item') {
-                            masterData = masterData.filter(r => r['カテゴリ'] === '商品');
+                            masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === '単体商品');
                         } else if (elmId === 'buy-item') {
                             // 仕入品目: パーツまたは単体商品
                             masterData = masterData.filter(r => r['カテゴリ'] === 'パーツ' || r['カテゴリ'] === '単体商品' || r['カテゴリ'] === 'パーツ2');
@@ -876,7 +886,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (type === 'select') {
                 const select = document.createElement('select');
                 select.id = 'sale-item';
-                const productMaster = currentMasters['M_商品'] || [];
+                const productMaster = (currentMasters['M_商品'] || [])
+                    .filter(p => p['カテゴリ'] === '商品' || p['カテゴリ'] === '単体商品');
                 select.innerHTML = '<option value="">--- 選択してください ---</option>';
                 productMaster.forEach(p => {
                     const o = document.createElement('option');

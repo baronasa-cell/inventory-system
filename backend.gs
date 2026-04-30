@@ -280,6 +280,9 @@ function registerTransaction(sheetName, data, scope = 'all') {
     if (sheetName === 'T_仕入' && h === '入庫日' && (data.status === '入庫済み' || data.status === '入庫済')) {
       return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
     }
+    if (sheetName === 'T_経費' && h === '完了日' && data.status === '完了') {
+      return data.date ? data.date.replace(/-/g, '/') : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+    }
 
     const key = mapping[h];
     if (typeof key === 'string' && data[key] !== undefined) {
@@ -745,9 +748,13 @@ function syncToLedger(sheetName, id, data) {
   
   let row = new Array(headers.length).fill("");
   
-  // 販売の場合は取引完了日を優先
+  // 帳簿の日付決定ロジックの改善
   if (sheetName === 'T_販売') {
     row[0] = data['取引完了日'] || data['販売開始日'] || new Date();
+  } else if (sheetName === 'T_経費') {
+    row[0] = data['完了日'] || data['注文日'] || new Date();
+  } else if (sheetName === 'T_仕入') {
+    row[0] = data['入庫日'] || data['仕入日'] || new Date();
   } else {
     row[0] = data['発注日'] || data['登録日'] || data['製造開始日'] || new Date(); 
   }
@@ -786,7 +793,13 @@ function syncToLedger(sheetName, id, data) {
   }
 
   ledgerSheet.appendRow(row);
-  formatColumn(ledgerSheet, ledgerSheet.getLastRow(), '日付', 'yyyy/MM/dd');
+  const lastRow = ledgerSheet.getLastRow();
+  formatColumn(ledgerSheet, lastRow, '日付', 'yyyy/MM/dd');
+
+  // 日付順（昇順）にソートして整理
+  if (lastRow > 1) {
+    ledgerSheet.getRange(2, 1, lastRow - 1, headers.length).sort({column: 1, ascending: true});
+  }
 }
 
 /**
