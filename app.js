@@ -265,7 +265,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     type: sheetName === 'T_仕入' ? 'purchase' : (sheetName === 'T_経費' ? 'expense' : (sheetName === 'T_販売' ? 'sales' : 'manufacturing')),
                     id: r[Object.keys(r)[0]], date: d, itemName: r['品名'],
                     amount: amount, status: status, quantity: r['数量'] || r['製造数量'],
-                    dateStr: formatDate(d)
+                    dateStr: formatDate(d),
+                    buyer: sheetName === 'T_販売' ? r['売先'] : null
                 });
 
                 // 個人用売上推移 (完了ベース・取引完了日ベースに統一)
@@ -1934,7 +1935,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} 数量:${item['数量'] || item['製造数量']} 単価:${item['単価'] || 0}</div>
                 <div class="process-steps-container">
                     <label class="group-label">工程進捗管理</label>
-                    <div class="process-dates-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                    <div class="process-dates-grid">
                         <div class="date-input-mini"><label>開始</label><input type="date" class="date-input" data-header="製造開始日" value="${formatISODate(item['製造開始日'])}"></div>
                         <div class="date-input-mini"><label>着手</label><input type="date" class="date-input" data-header="製造着手日" value="${formatISODate(item['製造着手日'])}"></div>
                         <div class="date-input-mini"><label>テスト</label><input type="date" class="date-input" data-header="テスト開始日" value="${formatISODate(item['テスト開始日'])}"></div>
@@ -1960,7 +1961,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="process-steps-container">
                     <label class="group-label">取引工程日付</label>
-                    <div class="process-dates-grid" style="grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                    <div class="process-dates-grid" style="grid-template-columns: repeat(2, 1fr);">
                         <div class="date-input-mini"><label>発送日</label><input type="date" class="date-input" data-header="発送日" value="${formatISODate(item['発送日'])}"></div>
                         <div class="date-input-mini"><label>受取日</label><input type="date" class="date-input" data-header="受取日" value="${formatISODate(item['受取日'])}"></div>
                         <div class="date-input-mini"><label>完了</label><input type="date" class="date-input" data-header="取引完了日" value="${formatISODate(item['取引完了日'])}"></div>
@@ -2404,8 +2405,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div class="item-header-meta">
                                 <span class="item-type-badge">${getLabelPrefix(action.type)}</span>
                                 <span class="item-status-badge ${isCompleted ? 'completed' : ''}">${action.status || '取引中'}</span>
+                                ${isIncome && action.buyer ? `<span class="badge badge-buyer">${action.buyer}</span>` : ''}
                             </div>
-                            <h4 class="item-name-text">${action.itemName}</h4>
+                            <h4 class="item-name-text clickable" onclick="scrollToTransaction('${action.type}', '${action.id}')">${action.itemName}</h4>
                             <div class="item-sub-meta">
                                 <span>${action.dateStr}</span>
                                 <span>数量: ${action.quantity || '-'}</span>
@@ -3254,5 +3256,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             loader.classList.remove('active');
         }
     }
+
+    /**
+     * 特定の取引レコードまでスクロールし、ハイライト表示する
+     */
+    window.scrollToTransaction = (type, id) => {
+        // 1. タブの切り替え
+        const navItem = document.querySelector(`.nav-item[data-target="${type}"]`);
+        if (navItem) navItem.click();
+
+        // 2. カードの特定とスクロール
+        // 履歴カードの描画完了を少し待つ
+        setTimeout(() => {
+            const container = document.getElementById('content-area');
+            const idBadges = document.querySelectorAll('.history-id');
+            let targetCard = null;
+            for (const badge of idBadges) {
+                if (badge.textContent.trim() === id) {
+                    targetCard = badge.closest('.history-card');
+                    break;
+                }
+            }
+
+            if (targetCard && container) {
+                // スムーズスクロール
+                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // ハイライト効果
+                targetCard.classList.add('highlight-flash');
+                setTimeout(() => targetCard.classList.remove('highlight-flash'), 3000);
+            } else {
+                console.warn(`Target card with ID ${id} not found.`);
+            }
+        }, 300); // 描画時間を考慮して少し長めに待機
+    };
 
 });

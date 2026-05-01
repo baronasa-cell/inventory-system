@@ -356,20 +356,10 @@ body {
 .process-dates-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    gap: 4px; /* 最小の隙間に調整 */
 }
 
-.process-dates-grid .date-input-mini:nth-child(n+4) {
-    grid-column: span 1.5; /* Bottom 2 items take more space if needed, or balanced */
-}
 
-/* Adjusting to 3+2 layout more cleanly */
-.process-dates-grid .date-input-mini:nth-child(4) {
-    grid-column: 1 / 2.5;
-}
-.process-dates-grid .date-input-mini:nth-child(5) {
-    grid-column: 2.5 / 4;
-}
 
 /* Radio Groups */
 .radio-group-horizontal {
@@ -433,12 +423,17 @@ body {
 .date-input-mini input,
 .date-input-mini select {
     width: 100%;
-    font-size: 11px;
-    padding: 6px 4px;
+    min-width: 0; /* 幅不足時に縮小を許可 */
+    font-size: 10px; /* 11pxから10pxに下げて横幅を確保 */
+    padding: 6px 1px; /* 左右パディングをほぼゼロにして内容を収める */
     border-radius: 6px;
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid rgba(0,0,0,0.15);
     background: #fff;
     height: 32px;
+    /* モバイルブラウザ特有のスタイルリセット */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
 
 .history-card-header .header-left {
@@ -3237,6 +3232,40 @@ input:checked + .slider:before {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+/* --- 提案13: 直近取引履歴のインタラクティブ対応 --- */
+.item-name-text.clickable {
+    cursor: pointer;
+    position: relative;
+    display: inline-block;
+    transition: all 0.2s ease;
+    color: var(--dark-green);
+    border-bottom: 1px dashed transparent;
+}
+
+.item-name-text.clickable:hover {
+    color: var(--accent-green);
+    border-bottom-color: var(--accent-green);
+}
+
+.item-name-text.clickable:active {
+    transform: scale(0.98);
+}
+
+/* 遷移後のハイライト効果 */
+@keyframes flash-highlight {
+    0% { background-color: transparent; }
+    10% { background-color: rgba(22, 163, 74, 0.15); box-shadow: 0 0 15px rgba(22, 163, 74, 0.1); }
+    100% { background-color: transparent; }
+}
+
+.highlight-flash {
+    animation: flash-highlight 3s ease-out;
+    border: 2px solid var(--accent-green) !important;
+    position: relative;
+    z-index: 10;
+}
+
 
 
 
