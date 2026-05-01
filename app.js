@@ -21,6 +21,87 @@ document.addEventListener('DOMContentLoaded', async () => {
         statuses: {}    // itemName -> newValue (0 or 1)
     };
 
+    // マスタ編集用スキーマ定義 (提案7・マスター管理強化)
+    const MASTER_SCHEMAS = {
+        'M_商品': {
+            key: '品名',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true },
+                { name: '品名', type: 'text', visible: true, editable: false }, // 編集時はReadOnly
+                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', '単体商品', '商品', '経費', '製造'] },
+                { name: '説明', type: 'textarea', visible: true, editable: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true },
+                { name: '画像URL', visible: false }
+            ]
+        },
+        'M_仕入先': {
+            key: '仕入先',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true },
+                { name: '仕入先', type: 'text', visible: true, editable: false },
+                { name: '用途区分', type: 'select', visible: true, editable: true, options: [{v:1, l:'1:仕入のみ'}, {v:2, l:'2:経費のみ'}, {v:3, l:'3:両方'}] },
+                { name: '説明', type: 'textarea', visible: true, editable: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+            ]
+        },
+        'M_売先': {
+            key: '売先',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true },
+                { name: '売先', type: 'text', visible: true, editable: false },
+                { name: '手数料率', type: 'number', visible: true, editable: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+            ]
+        },
+        'M_発送': {
+            key: '発送方法',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true },
+                { name: '発送方法', type: 'text', visible: true, editable: false },
+                { name: '送料', type: 'number', visible: true, editable: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+            ]
+        },
+        'M_BOM': {
+            key: '品名', // 実際は複合キーだがバックエンドで対応
+            fields: [
+                { name: '品名', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>r['カテゴリ']==='商品' },
+                { name: '部品', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>['パーツ','単体商品'].includes(r['カテゴリ']) },
+                { name: '数量', type: 'number', visible: true, editable: true },
+                { name: '説明', type: 'textarea', visible: true, editable: true }
+            ]
+        },
+        'M_経費品名': {
+            key: '品名',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true },
+                { name: '品名', type: 'text', visible: true, editable: false },
+                { name: 'デフォルト仕訳', type: 'select', visible: true, editable: true, refMaster: 'M_仕訳' },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+            ]
+        },
+        'T_在庫集計': {
+            key: '品名',
+            fields: [
+                { name: '品名', type: 'text', visible: true, editable: false },
+                { name: 'カテゴリ', type: 'text', visible: true, editable: false },
+                { name: '現在庫数', type: 'number', visible: true, editable: false },
+                { name: '閾値', type: 'number', visible: true, editable: true },
+                { name: '更新日', visible: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true },
+                { name: '最終棚卸日', type: 'text', visible: true, editable: false }
+            ]
+        },
+        'M_支払': {
+            key: '支払方法',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true },
+                { name: '支払方法', type: 'text', visible: true, editable: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+            ]
+        }
+    };
+
     // 棚卸管理用の状態
     let stocktakeSession = {
         verifiedItems: new Set(), // 現在のセッションで「済」にした品名
@@ -3079,6 +3160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             'M_発送': { title: '配送・送料', icon: 'bus-outline' },
             'M_経費品名': { title: '経費科目名', icon: 'receipt-outline' },
             'M_支払': { title: '支払方法', icon: 'wallet-outline' },
+            'T_在庫集計': { title: 'アラート設定(在庫閾値)', icon: 'notifications-outline' },
             'M_ステータス': { title: 'ステータス定義', icon: 'flag-outline' },
             'M_画面制御': { title: '画面入力制御', icon: 'options-outline' }
         };
@@ -3111,27 +3193,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         title.textContent = masterTitle;
         title.dataset.currentKey = masterKey;
 
-        // データ取得（既に currentMasters にあるはずですが、念のためフィルタ前の元データを取得する方が望ましい）
-        // ここでは簡単に currentMasters から表示用として構築します
-        // ※実際には非表示(使用FLG=0)のものも編集したいはずなので、APIを叩き直すのが理想
+        // 読み込み開始時にヘッダーとボディをクリア
+        head.innerHTML = '';
         body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px;">読み込み中...</td></tr>`;
 
         try {
             // 全データを取得するためにAPIを叩く（無効データも含める）
             const res = await fetchAPI('getMasters', { includeInactive: true });
-            const data = res.data[masterKey] || [];
-
-            if (data.length === 0) {
+            const rawData = res.data[masterKey] || [];
+            if (rawData.length < 1) {
                 body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px;">データがありません</td></tr>`;
                 return;
             }
+            
+            const headers = rawData[0];
+            const data = rawData.slice(1).map(row => {
+                const obj = {};
+                headers.forEach((h, i) => obj[h] = row[i]);
+                return obj;
+            });
 
-            // ヘッダー生成 (最初の項目からキーを取得)
-            const keys = Object.keys(data[0]).filter(k => k !== '最終更新日');
+            // ヘッダー生成
+            const schema = MASTER_SCHEMAS[masterKey];
+            const rawKeys = Object.keys(data[0]).filter(k => k !== '最終更新日' && k.trim() !== "");
+            let keys = [];
+            
+            if (schema) {
+                console.log(`Applying schema for ${masterKey}:`, schema);
+                // 1. シートにある列のうち、表示すべきものだけを抽出 (トリムして比較)
+                keys = rawKeys.filter(rk => {
+                    const cleanRK = rk.trim();
+                    const f = schema.fields.find(field => field.name.trim() === cleanRK);
+                    return f ? f.visible !== false : true;
+                });
+                
+                // 2. スキーマの定義順に従って並び替え
+                keys.sort((a, b) => {
+                    const idxA = schema.fields.findIndex(f => f.name.trim() === a.trim());
+                    const idxB = schema.fields.findIndex(f => f.name.trim() === b.trim());
+                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                    if (idxA !== -1) return -1;
+                    if (idxB !== -1) return 1;
+                    return 0;
+                });
+            } else {
+                console.warn(`No schema found for ${masterKey}`);
+                keys = rawKeys;
+            }
+
             head.innerHTML = `<tr>${keys.map(k => `<th>${k}</th>`).join('')}<th></th></tr>`;
 
             // ボディ生成
-            renderMasterTableBody(data, keys);
+            renderMasterTableBody(data, keys, masterKey);
 
             // 検索・追加ボタンのイベント再設定
             const searchInput = document.getElementById('master-search-input');
@@ -3141,7 +3254,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const filtered = data.filter(row =>
                     Object.values(row).some(v => String(v).toLowerCase().includes(term))
                 );
-                renderMasterTableBody(filtered, keys);
+                renderMasterTableBody(filtered, keys, masterKey);
             };
 
             const addBtn = document.getElementById('master-add-btn');
@@ -3152,9 +3265,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function renderMasterTableBody(data, keys) {
+    function renderMasterTableBody(data, keys, masterKey) {
         const body = document.getElementById('master-table-body');
-        const activeMasterKey = Object.keys(currentMasters).find(k => k === document.getElementById('settings-title').dataset.currentKey) || "";
+        const activeMasterKey = masterKey || Object.keys(currentMasters).find(k => k === document.getElementById('settings-title').dataset.currentKey) || "";
+        const schema = MASTER_SCHEMAS[activeMasterKey];
 
         body.innerHTML = '';
         data.forEach((row, idx) => {
@@ -3162,18 +3276,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isActive = row['使用FLG'] == 1 || row['使用FLG'] === true;
             if (!isActive) tr.classList.add('master-row-inactive');
 
-            let html = keys.map(k => `<td>${row[k] !== undefined ? row[k] : ''}</td>`).join('');
+            let html = keys.map(k => {
+                let val = row[k] !== undefined ? row[k] : '';
+                // スイッチ項目の場合は表示を工夫
+                const f = schema ? schema.fields.find(field => field.name.trim() === k.trim()) : null;
+                if (f && f.type === 'switch') {
+                    val = val == 1 ? '<span class="status-badge success">有効</span>' : '<span class="status-badge danger">無効</span>';
+                }
+                return `<td>${val}</td>`;
+            }).join('');
 
             // アクションボタン（ステータス切替 ＆ 編集）
             const tdActions = document.createElement('td');
             tdActions.className = 'action-cell';
+
+            // 更新用キーの取得
+            const keyCol = schema ? schema.key : keys[0];
+            const rowId = row[keyCol];
 
             const btnStatus = document.createElement('button');
             btnStatus.className = 'btn-edit-master';
             btnStatus.style.color = isActive ? 'var(--accent-green)' : 'var(--text-muted)';
             btnStatus.title = isActive ? '無効にする' : '有効にする';
             btnStatus.innerHTML = `<ion-icon name="${isActive ? 'eye-outline' : 'eye-off-outline'}"></ion-icon>`;
-            btnStatus.onclick = () => toggleMasterStatus(activeMasterKey, row[keys[0]], !isActive);
+            btnStatus.onclick = () => toggleMasterStatus(activeMasterKey, rowId, !isActive);
 
             const btnEdit = document.createElement('button');
             btnEdit.className = 'btn-edit-master';
@@ -3214,27 +3340,77 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fields = document.getElementById('master-edit-fields');
         const form = document.getElementById('master-edit-form');
         const title = document.getElementById('master-edit-title');
+        const schema = MASTER_SCHEMAS[masterKey];
 
         title.textContent = rowData ? `${masterKey} の編集` : `${masterKey} への新規追加`;
         fields.innerHTML = '';
         modal.classList.add('active');
 
-        keys.forEach((key, idx) => {
+        // 表示対象の列を取得
+        let targetKeys = keys;
+        if (schema) {
+            targetKeys = keys.filter(k => {
+                const f = schema.fields.find(field => field.name === k);
+                return f ? f.visible !== false : true;
+            });
+        }
+
+        targetKeys.forEach((key) => {
             const group = document.createElement('div');
             group.className = 'input-group';
-
-            // ID列（一番左）は編集不可にする
-            const isId = idx === 0;
+            
+            const fieldConfig = schema ? schema.fields.find(f => f.name === key) : null;
             const value = rowData ? rowData[key] : '';
+            const isId = fieldConfig ? (schema.key === key) : (keys.indexOf(key) === 0);
+            const isEditable = fieldConfig ? (rowData ? fieldConfig.editable : true) : true;
 
-            group.innerHTML = `
-                <label>${key}</label>
-                <input type="${typeof value === 'number' ? 'number' : 'text'}" 
-                       name="${key}" 
-                       value="${value !== undefined ? value : ''}"
-                       ${isId && rowData ? 'readonly class="readonly-field"' : ''}
-                       ${key === '使用FLG' ? 'placeholder="1:有効, 0:無効"' : ''}>
-            `;
+            let inputHtml = '';
+            const type = fieldConfig ? fieldConfig.type : (typeof value === 'number' ? 'number' : 'text');
+
+            if (type === 'switch') {
+                const checked = (value == 1 || value === true) ? 'checked' : '';
+                inputHtml = `
+                    <div style="display:flex; align-items:center; gap:10px; padding:10px 0;">
+                        <span style="font-size:14px;">${value == 1 ? '有効' : '無効'}</span>
+                        <label class="switch-ui">
+                            <input type="checkbox" name="${key}" ${checked} onchange="this.previousElementSibling.textContent = this.checked ? '有効' : '無効'">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                `;
+            } else if (type === 'select') {
+                let options = [];
+                if (fieldConfig.options) {
+                    options = fieldConfig.options;
+                } else if (fieldConfig.refMaster) {
+                    const refData = currentMasters[fieldConfig.refMaster] || [];
+                    const filteredRef = fieldConfig.filter ? refData.filter(fieldConfig.filter) : refData;
+                    options = filteredRef.map(r => r['品名'] || r[Object.keys(r)[0]]);
+                }
+                
+                inputHtml = `
+                    <select name="${key}" ${!isEditable ? 'disabled class="readonly-field"' : ''}>
+                        <option value="">選択してください</option>
+                        ${options.map(opt => {
+                            const val = typeof opt === 'object' ? opt.v : opt;
+                            const lbl = typeof opt === 'object' ? opt.l : opt;
+                            return `<option value="${val}" ${val == value ? 'selected' : ''}>${lbl}</option>`;
+                        }).join('')}
+                    </select>
+                `;
+            } else if (type === 'textarea') {
+                inputHtml = `<textarea name="${key}" ${!isEditable ? 'readonly class="readonly-field"' : ''}>${value !== undefined ? value : ''}</textarea>`;
+            } else {
+                inputHtml = `
+                    <input type="${type}" 
+                           name="${key}" 
+                           value="${value !== undefined ? value : ''}"
+                           ${!isEditable ? 'readonly class="readonly-field"' : ''}
+                           ${key === '使用FLG' ? 'placeholder="1:有効, 0:無効"' : ''}>
+                `;
+            }
+
+            group.innerHTML = `<label>${key}</label>${inputHtml}`;
             fields.appendChild(group);
         });
 
@@ -3244,28 +3420,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             const updates = {};
             let hasError = false;
 
-            formData.forEach((value, key) => {
-                const trimmedVal = value.trim();
-                if (trimmedVal === "") {
-                    if (!hasError) showToast(`「${key}」を入力してください。`, 'error');
-                    hasError = true;
-                    return;
+            // スキーマの定義に従って値を収集
+            targetKeys.forEach(key => {
+                const fieldConfig = schema ? schema.fields.find(f => f.name === key) : null;
+                const type = fieldConfig ? fieldConfig.type : 'text';
+                let value = '';
+
+                if (type === 'switch') {
+                    const checkbox = form.querySelector(`input[name="${key}"]`);
+                    value = checkbox.checked ? 1 : 0;
+                } else {
+                    const element = form.querySelector(`[name="${key}"]`);
+                    value = element ? element.value.trim() : '';
                 }
 
-                // 数値変換の試み
-                if (key === '表示順' || key === '使用FLG' || key === '手数料率') {
-                    const num = parseFloat(trimmedVal);
+                if (value === "" && type !== 'switch') {
+                    if (!hasError) showToast(`「${key}」を入力してください。`, 'error');
+                    hasError = true;
+                }
+
+                // 型の変換
+                if (type === 'number' || key === '表示順' || key === '使用FLG' || key === '手数料率') {
+                    const num = parseFloat(value);
                     if (isNaN(num)) {
                         if (!hasError) showToast(`「${key}」には数値を入力してください。`, 'error');
                         hasError = true;
                     }
                     updates[key] = num;
                 } else {
-                    updates[key] = trimmedVal;
+                    updates[key] = value;
                 }
             });
 
             if (hasError) return;
+
+            // 編集モードならキーを取得
+            const rowId = rowData ? rowData[schema ? schema.key : keys[0]] : null;
+            const isNew = !rowData;
 
             const btn = document.getElementById('master-edit-submit');
             const originalText = btn.textContent;
@@ -3276,18 +3467,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 let res;
                 if (rowData) {
-                    // 更新
                     res = await fetchAPI('updateMasterRecord', {
                         masterName: masterKey,
-                        id: rowData[keys[0]],
+                        id: rowId,
                         updates: updates
                     });
                 } else {
-                    // 新規追加 (将来用: 現状はupdateのロジックのみ)
-                    showToast("新規追加ロジックはバックエンドの実装が必要です。今回は更新のみ対応しています。", 'error');
-                    btn.disabled = false;
-                    btn.textContent = originalText;
-                    return;
+                    res = await fetchAPI('addMasterRecord', {
+                        masterName: masterKey,
+                        updates: updates
+                    });
                 }
 
                 if (res.status === 'success') {

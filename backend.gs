@@ -929,11 +929,12 @@ function updateInventorySummary() {
     }
   }
   
-  // 新規品目の追加
+      // 新規品目の追加
   for (const name of targetItems) {
     if (!existingNames.has(name)) {
       const pRow = pData.find(r => r['品名'] === name);
       const cat = pRow ? pRow['カテゴリ'] : "";
+      const useFlag = pRow ? (parseInt(pRow['使用FLG']) === 0 ? 0 : 1) : 1; // マスタの設定を継承（デフォルトは1）
 
       const newRow = new Array(sumHeaders.length).fill("");
       newRow[0] = name; 
@@ -941,7 +942,8 @@ function updateInventorySummary() {
       newRow[2] = summary[name]; 
       newRow[3] = 10;   
       newRow[4] = new Date(); 
-      newRow[5] = 1;    
+      newRow[5] = useFlag;    
+      newRow[6] = ""; // 最終棚卸日
 
       sumSheet.appendRow(newRow);
     }
@@ -1194,8 +1196,6 @@ function verifyAndAddMaster(sheetName, valueToAdd, extraUsage = null) {
     const uCol = cleanHeaders.indexOf('カテゴリ') !== -1 ? cleanHeaders.indexOf('カテゴリ') : 2;
     newRow[uCol] = extraUsage;
   }
-  
-  
   const sheet = SS.getSheetByName(sheetName);
   sheet.appendRow(newRow);
   DataCache.clear(sheetName); // キャッシュクリア
@@ -1326,11 +1326,26 @@ function updateStockBulk(thresholdUpdates, statusUpdates) {
     
     // ステータスの更新
     if (statusUpdates) {
+      const pSheet = SS.getSheetByName('M_商品');
+      const pData = pSheet ? pSheet.getDataRange().getValues() : [];
+      const pHeaders = pData[0] || [];
+      const pNameCol = pHeaders.indexOf('品名');
+      const pFlagCol = pHeaders.indexOf('使用FLG');
+
       for (const itemName in statusUpdates) {
         const rowIdx = itemMap[itemName];
+        const newStatus = statusUpdates[itemName];
         if (rowIdx) {
-          sheet.getRange(rowIdx, 6).setValue(statusUpdates[itemName]);
+          sheet.getRange(rowIdx, 6).setValue(newStatus);
           sheet.getRange(rowIdx, 5).setValue(now);
+        }
+
+        // M_商品側も同期
+        if (pSheet && pNameCol !== -1 && pFlagCol !== -1) {
+          const pRowIdx = pData.findIndex((r, idx) => idx > 0 && r[pNameCol] === itemName);
+          if (pRowIdx !== -1) {
+            pSheet.getRange(pRowIdx + 1, pFlagCol + 1).setValue(newStatus);
+          }
         }
       }
     }
@@ -1759,10 +1774,37 @@ function updateMasterRecord(masterName, id, updates) {
     if (!sheet) throw new Error("Master sheet not found: " + masterName);
     
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const rowIndex = data.findIndex((row, idx) => idx > 0 && row[0].toString() == id.toString());
+    const headers = data[0].map(h => h.toString().trim());
     
-    if (rowIndex === -1) throw new Error("ID not found: " + id);
+    // マスタごとのキー項目を定義
+    const keyConfig = {
+      'M_商品': '品名',
+      'M_仕入先': '仕入先',
+      'M_売先': '売先',
+      'M_発送': '発送方法',
+      'M_経費品名': '品名',
+      'M_支払': '支払方法',
+      'M_仕訳': '仕訳名',
+      'M_BOM': '品名', // BOMは品名で検索してから部品をチェック（後述）
+      'T_在庫集計': '品名'
+    };
+
+    const keyHeader = keyConfig[masterName] || headers[0];
+    const keyColIdx = headers.indexOf(keyHeader);
+    
+    let rowIndex = -1;
+    if (masterName === 'M_BOM' && updates.hasOwnProperty('部品')) {
+      // BOMは複合キー対応
+      rowIndex = data.findIndex((row, idx) => 
+        idx > 0 && row[headers.indexOf('品名')] === id && row[headers.indexOf('部品')] === updates['部品']
+      );
+    } else {
+      rowIndex = data.findIndex((row, idx) => idx > 0 && row[keyColIdx].toString() == id.toString());
+    }
+    
+    if (rowIndex === -1) throw new Error("ID not found: " + id + " in " + masterName);
+    
+    sheet.getRange(rowIndex + 1, 1, 1, headers.length).setValues([[...data[rowIndex]]]); // 元の行データを一旦確保（同期用）
     
     for (const key in updates) {
       const colIdx = headers.indexOf(key);
@@ -1770,7 +1812,66 @@ function updateMasterRecord(masterName, id, updates) {
         sheet.getRange(rowIndex + 1, colIdx + 1).setValue(updates[key]);
       }
     }
+
+    // --- 使用FLGの同期ロジック (提案7) ---
+    if (updates.hasOwnProperty('使用FLG')) {
+      const newStatus = updates['使用FLG'];
+      
+      if (masterName === 'M_商品') {
+        const itemName = data[rowIndex][headers.indexOf('品名')];
+        if (itemName) {
+          updateStockItemStatus(itemName, newStatus);
+        }
+      } else if (masterName === 'T_在庫集計') {
+        const itemName = data[rowIndex][0]; // T_在庫集計のIDは品名
+        const pSheet = SS.getSheetByName('M_商品');
+        if (pSheet) {
+          const pData = pSheet.getDataRange().getValues();
+          const pHeaders = pData[0];
+          const nameCol = pHeaders.indexOf('品名');
+          const flagCol = pHeaders.indexOf('使用FLG');
+          if (nameCol !== -1 && flagCol !== -1) {
+            const pRowIdx = pData.findIndex((r, idx) => idx > 0 && r[nameCol] === itemName);
+            if (pRowIdx !== -1) {
+              pSheet.getRange(pRowIdx + 1, flagCol + 1).setValue(newStatus);
+            }
+          }
+        }
+      }
+    }
     
+    SpreadsheetApp.flush();
+    return { status: 'success' };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+/**
+ * マスタデータの新規追加
+ */
+function addMasterRecord(masterName, updates) {
+  try {
+    const sheet = SS.getSheetByName(masterName);
+    if (!sheet) throw new Error("Master sheet not found: " + masterName);
+    
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const newRow = headers.map(h => {
+      if (updates.hasOwnProperty(h)) return updates[h];
+      if (h === '最終更新日') return new Date();
+      if (h === '使用FLG') return 1; // デフォルト有効
+      return "";
+    });
+    
+    sheet.appendRow(newRow);
+
+    // M_商品追加時はT_在庫集計にも初期行を作成
+    if (masterName === 'M_商品') {
+       updateInventorySummary(updates['品名']);
+    }
+
     SpreadsheetApp.flush();
     return { status: 'success' };
   } catch (e) {
