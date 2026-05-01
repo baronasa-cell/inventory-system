@@ -380,6 +380,9 @@ function updateTransaction(id, updates, scope = 'all') {
     }
   }
 
+  // 重要: シート更新後にキャッシュをクリアすることで、直後の handleStatusLogic が最新値を参照できる
+  DataCache.clear(sheetName);
+
   if (oldStatus !== newStatus) {
     const updatedRow = getRowAsObject(sheet, rowIndex + 1);
     handleStatusLogic(sheetName, id, newStatus, updatedRow);
