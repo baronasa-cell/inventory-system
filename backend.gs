@@ -740,7 +740,8 @@ function recordInventory(refId, type, itemName, qty, unitPrice, vendorName = "",
  * 帳簿連携 (T_帳簿)
  */
 function syncToLedger(sheetName, id, data) {
-  if (sheetName === 'T_製造') return; // 製造は帳簿対象外
+  // 帳簿記録の対象外シートのガード
+  if (sheetName === 'T_製造' || sheetName === 'T_仕入') return; 
   if (sheetName === 'T_販売' && (data['管理区分'] == 1 || data['管理対象外'] == 1)) return;
 
   const ledgerSheet = SS.getSheetByName('T_帳簿');
@@ -748,15 +749,14 @@ function syncToLedger(sheetName, id, data) {
   
   let row = new Array(headers.length).fill("");
   
-  // 帳簿の日付決定ロジックの改善
+  // 帳簿の日付決定ロジックの適正化
+  // 優先順位: 1.入力された完了日, 2.本日 (開始日や注文日には遡らない)
   if (sheetName === 'T_販売') {
-    row[0] = data['取引完了日'] || data['販売開始日'] || new Date();
+    row[0] = data['取引完了日'] || new Date();
   } else if (sheetName === 'T_経費') {
-    row[0] = data['完了日'] || data['注文日'] || new Date();
-  } else if (sheetName === 'T_仕入') {
-    row[0] = data['入庫日'] || data['仕入日'] || new Date();
+    row[0] = data['完了日'] || new Date();
   } else {
-    row[0] = data['発注日'] || data['登録日'] || data['製造開始日'] || new Date(); 
+    row[0] = new Date(); 
   }
   
   const price = parseFloat(data['合計金額'] || data['価格'] || data['販売価格'] || 0);
