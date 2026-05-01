@@ -1337,6 +1337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         safeData.forEach(row => {
             const itemName = row['品名'];
+            const category = row['カテゴリ'] || row['商品区分'] || ''; // カテゴリ情報を取得
             const rawQty = parseFloat(row['現在庫数']);
             const stockQty = isNaN(rawQty) ? 0 : rawQty;
 
@@ -1468,7 +1469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             ${imageUrl ? `<img src="${imageUrl}" loading="lazy">` : `<ion-icon name="image-outline"></ion-icon>`}
                         </div>
                         <div class="card-main-info">
-                            <div class="card-product-name">${itemName}</div>
+                            <div class="card-product-name clickable" onclick="navigateToTransactionForm('${itemName}', '${category}')">${itemName}</div>
                         </div>
                         <div class="status-icon-wrap">
                             <ion-icon name="${isDanger ? 'alert-circle' : 'checkmark-circle'}" 
@@ -2379,7 +2380,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (recentDashboard && recentDashboard.style.display !== 'none') {
             const listCard = recentDashboard.querySelector('.ledger-list');
             if (listCard) {
-                listCard.querySelectorAll('.transaction-item').forEach(el => el.remove());
+                listCard.querySelectorAll('.transaction-item, .empty-history').forEach(el => el.remove());
                 const reportBtn = listCard.querySelector('button');
                 recentActions.forEach(action => {
                     const itemDiv = document.createElement('div');
@@ -3288,6 +3289,49 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.warn(`Target card with ID ${id} not found.`);
             }
         }, 300); // 描画時間を考慮して少し長めに待機
+    };
+
+    /**
+     * 在庫一覧からカテゴリに応じた取引画面へ遷移し、対象品目を選択する (提案11改)
+     */
+    window.navigateToTransactionForm = (itemName, category) => {
+        let targetTab = 'purchase';
+        let inputId = 'buy-item';
+
+        // カテゴリに応じた遷移先の振り分け
+        if (category === 'パーツ2' || category === '商品') {
+            targetTab = 'manufacturing';
+            inputId = 'make-item';
+        } else if (category === '経費') {
+            targetTab = 'expense';
+            inputId = 'exp-item';
+        } else if (category === 'パーツ' || category === '単体商品') {
+            targetTab = 'purchase';
+            inputId = 'buy-item';
+        }
+
+        // 1. タブを切り替える
+        const navItem = document.querySelector(`.nav-item[data-target="${targetTab}"]`);
+        if (navItem) navItem.click();
+
+        // 2. 品目を選択する
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.value = itemName;
+            input.dispatchEvent(new Event('change'));
+            input.dispatchEvent(new Event('input')); // datalist用
+        }
+
+        // 3. 入力フォームまでスクロールして強調
+        setTimeout(() => {
+            const form = document.querySelector(`#tab-${targetTab} .card`);
+            if (form) {
+                form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                form.style.transition = 'box-shadow 0.5s';
+                form.style.boxShadow = '0 0 20px var(--primary-color)';
+                setTimeout(() => form.style.boxShadow = '', 1500);
+            }
+        }, 100);
     };
 
 });

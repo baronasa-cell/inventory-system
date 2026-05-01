@@ -13,7 +13,7 @@
         <!-- Header -->
         <header class="glass-header">
             <div class="header-main">
-                <ion-icon name="layers-outline" class="system-icon"></ion-icon>
+                <ion-icon name="grid-outline" class="system-icon"></ion-icon>
                 <h1 id="header-title">統合管理システム</h1>
             </div>
             <div class="header-actions">
@@ -28,7 +28,190 @@
 
         <!-- Main Content Area -->
         <main id="content-area">
-            <!-- 1. 仕入 (Purchase) -->
+            <!-- 1. ホーム (Dashboard) -->
+            <div id="tab-ledger" class="tab-content active">
+                <!-- View Switcher (Segment Control) -->
+                <div class="view-switcher">
+                    <button class="switcher-item active" data-view="dashboard">ダッシュボード</button>
+                    <button class="switcher-item" data-view="details">月次明細</button>
+                </div>
+
+                <!-- 在庫アラートセクション (常に上部に表示) -->
+                <div id="inventory-alerts-container" class="alert-section">
+                    <div class="empty-history" style="padding: 20px; text-align: center; color: var(--text-muted);">
+                        <ion-icon name="sync-outline" class="spinning" style="font-size: 20px; margin-bottom: 4px;"></ion-icon>
+                        <div>在庫状況を確認中...</div>
+                    </div>
+                </div>
+
+                <!-- 共通期間フィルタ (Unified Ledger Filter) -->
+                <div id="unified-ledger-filter" class="unified-ledger-filter" style="margin: 8px 0;">
+                    <!-- JSで動的に生成 -->
+                </div>
+
+                <!-- 1. Dashboard View (Active by default) -->
+                <div id="ledger-dashboard-view">
+                    <!-- Summary Section -->
+                    <div class="ledger-top-summary">
+                        <div class="empty-history" style="width: 100%; padding: 30px; text-align: center; color: var(--text-muted); background: rgba(255,255,255,0.3); border-radius: 12px;">
+                            <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; margin-bottom: 8px;"></ion-icon>
+                            <div>収支データを集計中...</div>
+                        </div>
+                    </div>
+
+                    <!-- Chart Card -->
+                    <div class="card glass-card ledger-chart-card">
+                        <div class="card-header-with-filter">
+                            <h2 class="card-title-with-icon">
+                                <ion-icon name="stats-chart-outline"></ion-icon>
+                                収支推移
+                            </h2>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <div class="chart-y-axis">
+                                <span>100k</span>
+                                <span>50k</span>
+                                <span>0k</span>
+                            </div>
+                            <div class="chart-bars">
+                                <!-- JSで動的に生成されます -->
+                            </div>
+                        </div>
+                        <div class="chart-legend">
+                            <span class="legend-item"><span class="dot income"></span>売上</span>
+                            <span class="legend-item"><span class="dot expense"></span>費用</span>
+                        </div>
+                    </div>
+
+                    <!-- Recent Transactions -->
+                    <div class="card glass-card list-card ledger-list">
+                        <h2 class="section-title-mini">最新の取引履歴</h2>
+                        <div class="empty-history" style="padding: 40px; text-align: center; color: var(--text-muted);">
+                            <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; margin-bottom: 8px;"></ion-icon>
+                            <div>履歴を読み込み中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Detailed Table View (Hidden by default) -->
+                <div id="ledger-details-view" style="display: none;">
+                    <div class="card glass-card detailed-table-card">
+                        <div class="card-header-with-filter">
+                            <h2 class="card-title-with-icon">
+                                <ion-icon name="list-outline"></ion-icon>
+                                月次明細
+                            </h2>
+                            <button id="export-ledger-btn" class="icon-btn-primary" title="スプレッドシートに出力">
+                                <ion-icon name="cloud-download-outline"></ion-icon>
+                            </button>
+                        </div>
+
+                        <div class="detailed-table-wrapper">
+                            <table class="detailed-table">
+                                <thead>
+                                    <tr>
+                                        <th class="sticky-col first">日付</th>
+                                        <th class="sticky-col second">品名</th>
+                                        <th>売上</th>
+                                        <th>仕入</th>
+                                        <th>通信</th>
+                                        <th>修繕</th>
+                                        <th>消耗品</th>
+                                        <th>諸会</th>
+                                        <th>手数料</th>
+                                        <th>雑費</th>
+                                        <th class="profit-col">粗利</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ledger-list-body">
+                                    <!-- JSで動的に描画されます -->
+                                </tbody>
+                                <tfoot>
+                                    <tr class="totals-row">
+                                        <td colspan="2" class="sticky-col first">合計</td>
+                                        <td id="ledger-total-sales">0</td>
+                                        <td id="ledger-total-purchase">0</td>
+                                        <td id="ledger-total-comm">0</td>
+                                        <td id="ledger-total-repair">0</td>
+                                        <td id="ledger-total-supplies">0</td>
+                                        <td id="ledger-total-dues">0</td>
+                                        <td id="ledger-total-fee">0</td>
+                                        <td id="ledger-total-misc">0</td>
+                                        <td id="ledger-total-profit" class="profit-col">0</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        <p class="table-hint">※横スクロールで詳細を確認できます。日付・品名は固定されています。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. 在庫 (Inventory) -->
+            <div id="tab-inventory" class="tab-content">
+                <div class="inventory-header">
+                    <div class="search-container">
+                        <div class="search-bar">
+                            <ion-icon name="search-outline"></ion-icon>
+                            <input type="text" id="stock-search-input" placeholder="在庫を検索...">
+                            <button id="stock-search-clear" title="検索をクリア">
+                                <ion-icon name="close-outline"></ion-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="inventory-toggles-wrapper">
+                        <div class="show-hidden-container">
+                            <span>閾値0のみ</span>
+                            <label class="switch">
+                                <input type="checkbox" id="stock-threshold-zero-only">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="show-hidden-container">
+                            <span>未確認のみ</span>
+                            <label class="switch">
+                                <input type="checkbox" id="stock-unchecked-only">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="show-hidden-container">
+                            <span>非表示品を表示</span>
+                            <label class="switch">
+                                <input type="checkbox" id="show-hidden-toggle">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card glass-card stock-card">
+                    <div class="card-header-with-badge">
+                        <h2 class="card-title-with-icon">
+                            <ion-icon name="cube-outline"></ion-icon>
+                            現在庫一覧
+                        </h2>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button id="stocktake-mode-toggle" class="mode-toggle-btn">
+                                <ion-icon name="checkbox-outline"></ion-icon>
+                                棚卸開始
+                            </button>
+                            <span class="count-badge">全 <span id="total-stock-items">-</span> 品目</span>
+                        </div>
+                    </div>
+
+                    <div class="stock-table-container">
+                        <div id="stock-list-body" class="stock-list-container">
+                            <div style="text-align:center; padding: 40px; color: var(--text-secondary);">
+                                <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; vertical-align: middle; margin-right: 8px;"></ion-icon>
+                                データを読み込み中...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. 仕入 (Purchase) -->
             <div id="tab-purchase" class="tab-content">
                 <div class="summary-card glass-card">
                     <h3>今月の仕入合計</h3>
@@ -111,102 +294,7 @@
                 </div>
             </div>
 
-            <div id="tab-expense" class="tab-content">
-                <div class="summary-card glass-card">
-                    <h3>今月の経費合計</h3>
-                    <div class="amount" id="expense-monthly-total">読み込み中...</div>
-                    <div class="history-badge cursor-pointer" onclick="document.getElementById('expense-history').scrollIntoView({behavior: 'smooth'})">
-                        <ion-icon name="checkmark-circle"></ion-icon>
-                        <span id="expense-history-count">読み込み中...</span>
-                    </div>
-                </div>
-                <div class="card glass-card">
-                    <h2 class="card-title-with-icon">
-                        <ion-icon name="cash-outline"></ion-icon>
-                        経費登録
-                    </h2>
-                    <div class="input-grid">
-                        <div class="input-group">
-                            <label>日付</label>
-                            <input type="date" id="expense-date">
-                        </div>
-                        <div class="input-group">
-                            <label>ステータス</label>
-                            <select id="exp-status-entry">
-                                <option value="">--- データ取得中 ---</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="input-grid-4-6">
-                        <div class="input-group">
-                            <label>仕訳</label>
-                            <input type="text" id="exp-account" list="expense-category-list" placeholder="仕訳を入力または選択">
-                            <datalist id="expense-category-list">
-                            </datalist>
-                        </div>
-                        <div class="input-group">
-                            <label>購入先</label>
-                            <input type="text" id="exp-vendor" list="vendor-list" placeholder="購入先を入力または選択">
-                            <datalist id="vendor-list">
-                            </datalist>
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <label>品名・内容 <span id="exp-item-preview" class="input-image-preview"></span></label>
-                        <input type="text" id="exp-item" list="expense-item-list" placeholder="品名や内容を入力または選択">
-                        <datalist id="expense-item-list">
-                        </datalist>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.9em; cursor: pointer; color: var(--text-secondary);">
-                            <input type="checkbox" id="exp-is-stock" style="width: auto;">
-                            在庫管理対象とする（梱包材など）
-                        </label>
-                    </div>
-                    <div class="input-grid">
-                        <div class="input-group">
-                            <label>価格 (合計)</label>
-                            <input type="number" id="exp-price" placeholder="0">
-                        </div>
-                        <div class="input-group">
-                            <label>数量</label>
-                            <input type="number" id="exp-quantity" placeholder="0">
-                        </div>
-                    </div>
-                    <div class="input-grid" style="grid-template-columns: 7fr 3fr;">
-                        <div class="input-group">
-                            <label>支払方法</label>
-                            <input type="text" id="exp-payment" list="expense-payment-list" placeholder="支払方法を入力または選択">
-                            <datalist id="expense-payment-list">
-                            </datalist>
-                        </div>
-                        <div class="input-group" style="justify-content: center; padding-left: 10px;">
-                            <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px; cursor: pointer;">
-                                <input type="checkbox" id="exp-receipt" style="width: auto; transform: scale(1.1);">
-                                レシート有り
-                            </label>
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <label>備考</label>
-                        <textarea id="exp-note" placeholder="詳細を入力"></textarea>
-                    </div>
-                    <button id="exp-submit" class="primary-btn">登録</button>
-                </div>
-
-                <div class="history-section" id="expense-history">
-                    <h2 class="section-title card-title-with-icon">
-                        <ion-icon name="time-outline"></ion-icon>
-                        経費履歴
-                    </h2>
-                    
-                    <div id="expense-history-list">
-                        <div class="empty-history" style="padding: 40px; text-align: center; color: var(--text-muted);">
-                            <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; margin-bottom: 8px;"></ion-icon>
-                            <div>読み込み中...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+            <!-- 4. 製造 (Manufacturing) -->
             <div id="tab-manufacturing" class="tab-content">
                 <div class="summary-card glass-card">
                     <h3>現在進行中の製造</h3>
@@ -269,7 +357,8 @@
                 </div>
             </div>
 
-            <div id="tab-sales" class="tab-content active">
+            <!-- 5. 販売 (Sales) -->
+            <div id="tab-sales" class="tab-content">
                 <div class="summary-card glass-card">
                     <h3>今月の売上</h3>
                     <div class="amount" id="sales-monthly-total" style="color: var(--accent-green);">読み込み中...</div>
@@ -403,192 +492,99 @@
                 </div>
             </div>
 
-            <div id="tab-inventory" class="tab-content">
-                <div class="inventory-header">
-                    <div class="search-container">
-                        <div class="search-bar">
-                            <ion-icon name="search-outline"></ion-icon>
-                            <input type="text" id="stock-search-input" placeholder="在庫を検索...">
-                            <button id="stock-search-clear" title="検索をクリア">
-                                <ion-icon name="close-outline"></ion-icon>
-                            </button>
+            <!-- 6. 経費 (Expense) -->
+            <div id="tab-expense" class="tab-content">
+                <div class="summary-card glass-card">
+                    <h3>今月の経費合計</h3>
+                    <div class="amount" id="expense-monthly-total">読み込み中...</div>
+                    <div class="history-badge cursor-pointer" onclick="document.getElementById('expense-history').scrollIntoView({behavior: 'smooth'})">
+                        <ion-icon name="checkmark-circle"></ion-icon>
+                        <span id="expense-history-count">読み込み中...</span>
+                    </div>
+                </div>
+                <div class="card glass-card">
+                    <h2 class="card-title-with-icon">
+                        <ion-icon name="cash-outline"></ion-icon>
+                        経費登録
+                    </h2>
+                    <div class="input-grid">
+                        <div class="input-group">
+                            <label>日付</label>
+                            <input type="date" id="expense-date">
+                        </div>
+                        <div class="input-group">
+                            <label>ステータス</label>
+                            <select id="exp-status-entry">
+                                <option value="">--- データ取得中 ---</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="inventory-toggles-wrapper">
-                        <div class="show-hidden-container">
-                            <span>閾値0のみ</span>
-                            <label class="switch">
-                                <input type="checkbox" id="stock-threshold-zero-only">
-                                <span class="slider"></span>
+                    <div class="input-grid-4-6">
+                        <div class="input-group">
+                            <label>仕訳</label>
+                            <input type="text" id="exp-account" list="expense-category-list" placeholder="仕訳を入力または選択">
+                            <datalist id="expense-category-list">
+                            </datalist>
+                        </div>
+                        <div class="input-group">
+                            <label>購入先</label>
+                            <input type="text" id="exp-vendor" list="vendor-list" placeholder="購入先を入力または選択">
+                            <datalist id="vendor-list">
+                            </datalist>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>品名・内容 <span id="exp-item-preview" class="input-image-preview"></span></label>
+                        <input type="text" id="exp-item" list="expense-item-list" placeholder="品名や内容を入力または選択">
+                        <datalist id="expense-item-list">
+                        </datalist>
+                        <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.9em; cursor: pointer; color: var(--text-secondary);">
+                            <input type="checkbox" id="exp-is-stock" style="width: auto;">
+                            在庫管理対象とする（梱包材など）
+                        </label>
+                    </div>
+                    <div class="input-grid">
+                        <div class="input-group">
+                            <label>価格 (合計)</label>
+                            <input type="number" id="exp-price" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label>数量</label>
+                            <input type="number" id="exp-quantity" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="input-grid" style="grid-template-columns: 7fr 3fr;">
+                        <div class="input-group">
+                            <label>支払方法</label>
+                            <input type="text" id="exp-payment" list="expense-payment-list" placeholder="支払方法を入力または選択">
+                            <datalist id="expense-payment-list">
+                            </datalist>
+                        </div>
+                        <div class="input-group" style="justify-content: center; padding-left: 10px;">
+                            <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px; cursor: pointer;">
+                                <input type="checkbox" id="exp-receipt" style="width: auto; transform: scale(1.1);">
+                                レシート有り
                             </label>
                         </div>
-                        <div class="show-hidden-container">
-                            <span>未確認のみ</span>
-                            <label class="switch">
-                                <input type="checkbox" id="stock-unchecked-only">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <div class="show-hidden-container">
-                            <span>非表示品を表示</span>
-                            <label class="switch">
-                                <input type="checkbox" id="show-hidden-toggle">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
                     </div>
+                    <div class="input-group">
+                        <label>備考</label>
+                        <textarea id="exp-note" placeholder="詳細を入力"></textarea>
+                    </div>
+                    <button id="exp-submit" class="primary-btn">登録</button>
                 </div>
 
-                <div class="card glass-card stock-card">
-                    <div class="card-header-with-badge">
-                        <h2 class="card-title-with-icon">
-                            <ion-icon name="cube-outline"></ion-icon>
-                            現在庫一覧
-                        </h2>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <button id="stocktake-mode-toggle" class="mode-toggle-btn">
-                                <ion-icon name="checkbox-outline"></ion-icon>
-                                棚卸開始
-                            </button>
-                            <span class="count-badge">全 <span id="total-stock-items">-</span> 品目</span>
+                <div class="history-section" id="expense-history">
+                    <h2 class="section-title card-title-with-icon">
+                        <ion-icon name="time-outline"></ion-icon>
+                        経費履歴
+                    </h2>
+                    
+                    <div id="expense-history-list">
+                        <div class="empty-history" style="padding: 40px; text-align: center; color: var(--text-muted);">
+                            <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; margin-bottom: 8px;"></ion-icon>
+                            <div>読み込み中...</div>
                         </div>
-                    </div>
-
-                    <div class="stock-table-container">
-                        <div id="stock-list-body" class="stock-list-container">
-                            <div style="text-align:center; padding: 40px; color: var(--text-secondary);">
-                                <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; vertical-align: middle; margin-right: 8px;"></ion-icon>
-                                データを読み込み中...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="tab-ledger" class="tab-content">
-                <!-- View Switcher (Segment Control) -->
-                <div class="view-switcher">
-                    <button class="switcher-item active" data-view="dashboard">ダッシュボード</button>
-                    <button class="switcher-item" data-view="details">月次明細</button>
-                </div>
-
-                <!-- 在庫アラートセクション (常に上部に表示) -->
-                <div id="inventory-alerts-container" class="alert-section">
-                    <!-- JSで動的に構築されます -->
-                </div>
-
-                <!-- 共通期間フィルタ (Unified Ledger Filter) -->
-                <div id="unified-ledger-filter" class="unified-ledger-filter" style="margin: 8px 0;">
-                    <!-- JSで動的に生成 -->
-                </div>
-
-                <!-- 1. Dashboard View (Active by default) -->
-                <div id="ledger-dashboard-view">
-
-
-                    <!-- Summary Section -->
-                    <div class="ledger-top-summary">
-                        <div class="mini-summary-card income">
-                            <label>売上合計</label>
-                            <div class="val">-</div>
-                        </div>
-                        <div class="mini-summary-card expense">
-                            <label>経費合計</label>
-                            <div class="val">-</div>
-                        </div>
-                        <div class="mini-summary-card profit">
-                            <label>純利益</label>
-                            <div class="val">-</div>
-                        </div>
-                    </div>
-
-                    <!-- Chart Card -->
-                    <div class="card glass-card ledger-chart-card">
-                        <div class="card-header-with-filter">
-                            <h2 class="card-title-with-icon">
-                                <ion-icon name="stats-chart-outline"></ion-icon>
-                                収支推移
-                            </h2>
-                        </div>
-                        
-                        <div class="chart-container">
-                            <div class="chart-y-axis">
-                                <span>100k</span>
-                                <span>50k</span>
-                                <span>0k</span>
-                            </div>
-                            <div class="chart-bars">
-                                <!-- JSで動的に生成されます -->
-                            </div>
-                        </div>
-                        <div class="chart-legend">
-                            <span class="legend-item"><span class="dot income"></span>売上</span>
-                            <span class="legend-item"><span class="dot expense"></span>費用</span>
-                        </div>
-                    </div>
-
-                    <!-- Recent Transactions -->
-                    <div class="card glass-card list-card ledger-list">
-                        <h2 class="section-title-mini">最新の取引履歴</h2>
-                        <!-- JSで動的に生成されます -->
-                    </div>
-                </div>
-
-                <!-- 2. Detailed Table View (Hidden by default) -->
-                <div id="ledger-details-view" style="display: none;">
-                    <div class="card glass-card detailed-table-card">
-                        <div class="card-header-with-filter">
-                            <h2 class="card-title-with-icon">
-                                <ion-icon name="list-outline"></ion-icon>
-                                月次明細
-                            </h2>
-                                <button id="export-ledger-btn" class="icon-btn-primary" title="スプレッドシートに出力">
-                                    <ion-icon name="cloud-download-outline"></ion-icon>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div id="ledger-export-status" class="export-status-area" style="display: none;">
-                            <!-- 出力結果のリンクが表示される -->
-                        </div>
-
-                        <div class="detailed-table-wrapper">
-                            <table class="detailed-table">
-                                <thead>
-                                    <tr>
-                                        <th class="sticky-col first">日付</th>
-                                        <th class="sticky-col second">品名</th>
-                                        <th>売上</th>
-                                        <th>仕入</th>
-                                        <th>通信</th>
-                                        <th>修繕</th>
-                                        <th>消耗品</th>
-                                        <th>諸会</th>
-                                        <th>手数料</th>
-                                        <th>雑費</th>
-                                        <th class="profit-col">粗利</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ledger-list-body">
-                                    <!-- JSで動的に描画されます -->
-                                </tbody>
-                                <tfoot>
-                                    <tr class="totals-row">
-                                        <td colspan="2" class="sticky-col first">合計</td>
-                                        <td id="ledger-total-sales">0</td>
-                                        <td id="ledger-total-purchase">0</td>
-                                        <td id="ledger-total-comm">0</td>
-                                        <td id="ledger-total-repair">0</td>
-                                        <td id="ledger-total-supplies">0</td>
-                                        <td id="ledger-total-dues">0</td>
-                                        <td id="ledger-total-fee">0</td>
-                                        <td id="ledger-total-misc">0</td>
-                                        <td id="ledger-total-profit" class="profit-col">0</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                        <p class="table-hint">※横スクロールで詳細を確認できます。日付・品名は固定されています。</p>
                     </div>
                 </div>
             </div>
@@ -631,14 +627,17 @@
 
         <!-- Bottom Navigation -->
         <nav class="bottom-nav glass-nav">
+            <button class="nav-item active" data-target="ledger" data-title="ホーム">
+                <ion-icon name="home-outline"></ion-icon>
+                <span>ホーム</span>
+            </button>
+            <button class="nav-item" data-target="inventory" data-title="在庫">
+                <ion-icon name="cube-outline"></ion-icon>
+                <span>在庫</span>
+            </button>
             <button class="nav-item" data-target="purchase" data-title="仕入">
                 <ion-icon name="cart-outline"></ion-icon>
                 <span>仕入</span>
-                <span class="nav-badge"></span>
-            </button>
-            <button class="nav-item" data-target="expense" data-title="経費">
-                <ion-icon name="cash-outline"></ion-icon>
-                <span>経費</span>
                 <span class="nav-badge"></span>
             </button>
             <button class="nav-item" data-target="manufacturing" data-title="製造">
@@ -646,18 +645,14 @@
                 <span>製造</span>
                 <span class="nav-badge"></span>
             </button>
-            <button class="nav-item active" data-target="sales" data-title="販売">
+            <button class="nav-item" data-target="sales" data-title="販売">
                 <ion-icon name="pricetags-outline"></ion-icon>
                 <span>販売</span>
                 <span class="nav-badge"></span>
             </button>
-            <button class="nav-item" data-target="inventory" data-title="在庫">
-                <ion-icon name="cube-outline"></ion-icon>
-                <span>在庫</span>
-            </button>
-            <button class="nav-item" data-target="ledger" data-title="帳簿">
-                <ion-icon name="book-outline"></ion-icon>
-                <span>帳簿</span>
+            <button class="nav-item" data-target="expense" data-title="経費">
+                <ion-icon name="cash-outline"></ion-icon>
+                <span>経費</span>
                 <span class="nav-badge"></span>
             </button>
         </nav>

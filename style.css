@@ -598,6 +598,18 @@ body {
     overflow-wrap: anywhere;
 }
 
+.card-product-name.clickable {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    color: var(--primary-color);
+}
+
+.card-product-name.clickable:active {
+    opacity: 0.6;
+}
+
 .card-sub-info {
     font-size: 10px;
     color: var(--text-muted);
@@ -637,7 +649,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 6px; /* 8pxから6pxに微調整してボタンを収めやすくする */
 }
 
 .status-icon {
@@ -1650,8 +1662,8 @@ input:checked + .slider:before {
 
 
 .product-thumb-container {
-    width: 36px;
-    height: 36px;
+    width: 54px; /* 36pxから拡大 */
+    height: 54px; /* 36pxから拡大 */
     border-radius: 8px;
     background: #e5e7eb;
     margin-right: 12px;
@@ -1671,7 +1683,7 @@ input:checked + .slider:before {
 }
 
 .product-thumb-container ion-icon {
-    font-size: 20px;
+    font-size: 28px; /* 20pxから拡大 */
     color: var(--text-muted);
 }
 
