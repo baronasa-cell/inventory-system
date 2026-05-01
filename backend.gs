@@ -1,6 +1,6 @@
 /**
  * 統合管理システム - バックエンドAPI (Google Apps Script)
- * VERSION: 0.6
+ * VERSION: 0.61
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
