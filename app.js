@@ -669,6 +669,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Add Material Modal Listeners (Proposal 15)
+        const addMatClose = document.getElementById('add-material-close-btn');
+        const addMatCancel = document.getElementById('add-material-cancel');
+        const addMatSubmit = document.getElementById('add-material-submit');
+        const addMatModal = document.getElementById('add-material-modal');
+
+        if (addMatClose) addMatClose.addEventListener('click', () => addMatModal.classList.remove('active'));
+        if (addMatCancel) addMatCancel.addEventListener('click', () => addMatModal.classList.remove('active'));
+        if (addMatSubmit) {
+            addMatSubmit.addEventListener('click', () => handleMaterialSubmission());
+        }
+
         // Stocktake Submit
         const stocktakeSubmit = document.getElementById('stocktake-submit');
         if (stocktakeSubmit) {
@@ -1882,13 +1894,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ${(tab === 'expense' && item['管理対象'] == 1) ? '<span class="badge badge-info"><ion-icon name="cube-outline"></ion-icon> 在庫対象</span>' : ''}
                     ${(tab === 'expense' && item['レシート'] == 1) ? '<span class="badge badge-secondary"><ion-icon name="receipt-outline"></ion-icon> レシート有</span>' : ''}
                     ${(tab === 'manufacturing' && !['完了', 'キャンセル'].includes(item['ステータス'])) ? '<span class="badge badge-info">パーツ引当済</span>' : ''}
+                    ${(tab === 'manufacturing' && (item['備考'] || '').includes('追加部材:')) ? '<span class="badge badge-added">部材追加あり</span>' : ''}
                     ${(tab === 'sales' && (item['管理対象外'] == 1 || item['管理区分'] == 1)) ? '<span class="badge badge-personal">個人利用</span>' : ''}
                     ${(tab === 'sales' && item['管理対象外'] != 1 && item['管理区分'] != 1 && !['キャンセル'].includes(item['ステータス'])) ? '<span class="badge badge-info">在庫引当済</span>' : ''}
                 </div>
-                <button class="update-mini-btn" data-id="${id}" title="変更を保存">
-                    <span>保存</span>
-                    <ion-icon name="save-outline"></ion-icon>
-                </button>
+                <div class="header-right" style="display: flex; gap: 8px;">
+                    ${(tab === 'manufacturing' && !['完了', 'キャンセル'].includes(item['ステータス'])) ? `
+                        <button class="add-material-btn" data-id="${id}" title="部材を追加消費する">
+                            <ion-icon name="add-circle-outline"></ion-icon>
+                            <span>部材追加</span>
+                        </button>
+                    ` : ''}
+                    <button class="update-mini-btn" data-id="${id}" title="変更を保存">
+                        <span>保存</span>
+                        <ion-icon name="save-outline"></ion-icon>
+                    </button>
+                </div>
             </div>
         `;
 
@@ -1992,7 +2013,78 @@ document.addEventListener('DOMContentLoaded', async () => {
             saveBtn.addEventListener('click', () => handleHistorySave(saveBtn));
         }
 
+        // 部材追加ボタンにイベントをバインド (Proposal 15)
+        const addMatBtn = card.querySelector('.add-material-btn');
+        if (addMatBtn) {
+            addMatBtn.addEventListener('click', () => showAddMaterialModal(id));
+        }
+
         return card;
+    }
+
+    /**
+     * 部材追加モーダルの表示 (Proposal 15)
+     */
+    let currentManufacturingIdForAdd = null;
+    function showAddMaterialModal(id) {
+        currentManufacturingIdForAdd = id;
+        const modal = document.getElementById('add-material-modal');
+        if (!modal) return;
+
+        // 初期化
+        document.getElementById('add-material-item').value = '';
+        document.getElementById('add-material-quantity').value = '1';
+        document.getElementById('add-material-reason').value = '';
+
+        modal.classList.add('active');
+    }
+
+    async function handleMaterialSubmission() {
+        const id = currentManufacturingIdForAdd;
+        const item = document.getElementById('add-material-item').value.trim();
+        const quantity = parseFloat(document.getElementById('add-material-quantity').value);
+        const reason = document.getElementById('add-material-reason').value.trim();
+
+        if (!item) return alert("部材名を入力してください。");
+        if (isNaN(quantity) || quantity <= 0) return alert("有効な数量を入力してください。");
+
+        if (!confirm(`${item} を ${quantity} 個、追加で引き当てます。よろしいですか？\n(この操作により製造単価が再計算されます)`)) return;
+
+        const btn = document.getElementById('add-material-submit');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<ion-icon name="sync-outline" class="spinning"></ion-icon> 実行中...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetchAPI('addMaterialToManufacturing', {
+                manufacturingId: id,
+                item: item,
+                quantity: quantity,
+                reason: reason
+            });
+
+            if (res.status === 'success') {
+                showToast("部材を追加し、単価を再計算しました。");
+                document.getElementById('add-material-modal').classList.remove('active');
+                
+                // 履歴データを更新して再描画
+                if (res.historyData && res.historyData.rawData) {
+                    lastRawData = Object.assign({}, lastRawData, res.historyData.rawData);
+                    const processed = processClientData(lastRawData);
+                    lastHistoryData = processed;
+                    renderAllHistory(processed);
+                } else {
+                    await fetchHistory('manufacturing');
+                }
+            } else {
+                throw new Error(res.message);
+            }
+        } catch (e) {
+            alert("エラー: " + e.message);
+        } finally {
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+        }
     }
 
     function generateStatusSelect(id, actionName, currentStatus) {

@@ -300,6 +300,32 @@ body {
     border: 1px solid rgba(84, 110, 122, 0.2);
 }
 
+.badge-added {
+    background: rgba(249, 115, 22, 0.1); /* Orange */
+    color: #ea580c;
+    border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.add-material-btn {
+    background: rgba(249, 115, 22, 0.1);
+    color: #ea580c;
+    border: 1px solid rgba(249, 115, 22, 0.2);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-material-btn:active {
+    transform: scale(0.95);
+    background: rgba(249, 115, 22, 0.2);
+}
+
 /* Auto Process Info Box */
 .auto-process-info {
     background: rgba(22, 163, 74, 0.05);

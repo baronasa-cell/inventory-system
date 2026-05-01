@@ -751,6 +751,39 @@
             </div>
         </div>
     </div>
+    <!-- 部材追加モーダル (Proposal 15) -->
+    <div id="add-material-modal" class="modal-overlay" style="z-index: 1100;">
+        <div class="modal-container glass-card" style="height: auto; max-height: 80vh;">
+            <header class="modal-header">
+                <h2 id="add-material-title">部材の追加消費</h2>
+                <button id="add-material-close-btn" class="icon-btn">
+                    <ion-icon name="close-outline"></ion-icon>
+                </button>
+            </header>
+            <div class="modal-content">
+                <div class="input-grid-single">
+                    <div class="input-group">
+                        <label>部材名</label>
+                        <input type="text" id="add-material-item" list="product-list" placeholder="部材名を検索・入力">
+                    </div>
+                    <div class="input-grid">
+                        <div class="input-group">
+                            <label>数量</label>
+                            <input type="number" id="add-material-quantity" value="1" min="1">
+                        </div>
+                        <div class="input-group">
+                            <label>追加理由</label>
+                            <input type="text" id="add-material-reason" placeholder="作業ミス、部材不良など">
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 24px; display: flex; gap: 12px;">
+                    <button type="button" id="add-material-cancel" class="primary-btn outline-btn">キャンセル</button>
+                    <button type="button" id="add-material-submit" class="primary-btn">引き当てる</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

@@ -1,6 +1,6 @@
 /**
  * 統合管理システム - バックエンドAPI (Google Apps Script)
- * VERSION: 0.61
+ * VERSION: 0.63
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
@@ -144,6 +144,9 @@ function handleRequest(p) {
         break;
       case 'updateMasterRecord':
         result = updateMasterRecord(p.masterName, p.id, p.updates);
+        break;
+      case 'addMaterialToManufacturing':
+        result = addMaterialToManufacturing(p.manufacturingId, p.item, p.quantity, p.reason);
         break;
     }
 
@@ -407,6 +410,76 @@ function updateTransaction(id, updates, scope = 'all') {
     status: 'success', 
     masterAdded: false,
     historyData: fetchHistoryData(scope)
+  };
+}
+
+/**
+ * 製造レコードへの追加部材引き当て処理
+ */
+function addMaterialToManufacturing(manufacturingId, partName, quantity, reason) {
+  const sheetName = 'T_製造';
+  const sheet = SS.getSheetByName(sheetName);
+  const data = DataCache.getValues(sheetName);
+  const rowIndex = data.findIndex(row => row[0].toString() === manufacturingId.toString());
+  
+  if (rowIndex === -1) throw new Error("Manufacturing ID not found: " + manufacturingId);
+
+  const headers = data[0];
+  const itemCol = headers.indexOf('品名');
+  const qtyCol = headers.indexOf('数量');
+  const unitPriceCol = headers.indexOf('単価');
+  const noteCol = headers.indexOf('備考');
+  const updatedCol = headers.indexOf('最終更新日');
+
+  const makeQty = parseFloat(data[rowIndex][qtyCol]) || 0;
+  const currentUnitPrice = parseFloat(data[rowIndex][unitPriceCol]) || 0;
+  const currentTotalCost = currentUnitPrice * makeQty;
+
+  // 1. 在庫引き当て (FIFO)
+  StockManager.init();
+  const extraCost = processFIFO(manufacturingId, '製造引当(追加)', partName, quantity);
+  
+  // 在庫管理の備考に理由を記録
+  const stockData = StockManager.data;
+  const lastStockIdx = StockManager.newRows.length > 0 ? StockManager.newRows.length - 1 : -1;
+  if (lastStockIdx !== -1) {
+    const invHeaders = StockManager.headers;
+    const invNoteCol = invHeaders.indexOf('備考');
+    if (invNoteCol !== -1) {
+      StockManager.newRows[lastStockIdx][invNoteCol] = reason || "追加消費";
+    }
+  }
+
+  // 2. 新単価の計算
+  const newTotalCost = currentTotalCost + extraCost;
+  const newUnitPrice = makeQty > 0 ? roundTo2dp(newTotalCost / makeQty) : currentUnitPrice;
+
+  // 3. シートへの書き込み
+  if (unitPriceCol !== -1) {
+    sheet.getRange(rowIndex + 1, unitPriceCol + 1).setValue(newUnitPrice);
+  }
+
+  // 備考への追記
+  if (noteCol !== -1) {
+    const todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+    const currentNote = (data[rowIndex][noteCol] || "").toString();
+    const addNote = `\n[${todayStr}] 追加部材: ${partName} × ${quantity} (理由: ${reason || 'なし'})`;
+    sheet.getRange(rowIndex + 1, noteCol + 1).setValue(currentNote + addNote);
+  }
+
+  // 最終更新日
+  if (updatedCol !== -1) {
+    sheet.getRange(rowIndex + 1, updatedCol + 1).setValue(new Date());
+  }
+
+  StockManager.flush();
+  updateInventorySummary();
+  DataCache.clear(sheetName);
+
+  return { 
+    status: 'success',
+    message: '部材の追加と単価の再計算が完了しました。',
+    historyData: fetchHistoryData('manufacturing')
   };
 }
 
