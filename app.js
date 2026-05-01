@@ -598,13 +598,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const qtyInputs = ['buy-quantity', 'exp-quantity', 'make-quantity', 'sale-quantity'];
         qtyInputs.forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.value = '1';
+            if (el) el.value = '';
         });
 
         // Inventory Search & Filter Logic
         const stockSearchInput = document.getElementById('stock-search-input');
         const stockSearchClear = document.getElementById('stock-search-clear');
         const showHiddenToggle = document.getElementById('show-hidden-toggle');
+        const thresholdZeroToggle = document.getElementById('stock-threshold-zero-only');
+        const uncheckedOnlyToggle = document.getElementById('stock-unchecked-only');
 
         if (stockSearchInput && stockSearchClear) {
             stockSearchInput.addEventListener('input', (e) => {
@@ -622,6 +624,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (showHiddenToggle) {
             showHiddenToggle.addEventListener('change', () => {
+                applyStockFilters();
+            });
+        }
+
+        if (thresholdZeroToggle) {
+            thresholdZeroToggle.addEventListener('change', () => {
+                applyStockFilters();
+            });
+        }
+
+        if (uncheckedOnlyToggle) {
+            uncheckedOnlyToggle.addEventListener('change', () => {
                 applyStockFilters();
             });
         }
@@ -742,55 +756,64 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const options = (ctrl['固定値の内容'] || "").split(',').map(s => s.trim());
                 populateElement(elm, type, options);
             }
-            else if ((type === 'select' || type === 'suggest' || type === 'suggest-strict') && masterName) {
-                if (masterName === 'M_ステータス') {
-                    const statuses = (masters['M_ステータス'] || [])
-                        .filter(s => (parseInt(s['使用FLG']) === 1 || s['使用FLG'] == 1) && s['対象機能'] === ctrl['対象機能'] && s['画面名称'] === ctrl['画面名称'])
-                        .sort((a, b) => (a['表示順'] || 0) - (b['表示順'] || 0));
-                    populateElement(elm, type, statuses.map(s => s['ステータス名称']));
-                } else {
-                    let masterData = masters[masterName] || [];
-                    // 特殊フィルタリング: M_商品 の場合のみ、要素IDや画面名称からカテゴリで絞り込む
-                    if (masterName === 'M_商品') {
-                        if (elmId === 'exp-item') {
-                            // 経費品目: 設計書では M_商品。既存の統合ロジック（M_経費品名含む）を維持しつつフィルタ。
-                            const prodCategories = ['経費', '梱包材', '資材'];
-                            masterData = masterData.filter(r => prodCategories.includes(r['カテゴリ']));
-                            const expenseMaster = (masters['M_経費品名'] || []).filter(r => parseInt(r['使用FLG']) === 1 || r['使用FLG'] == 1);
-                            masterData = [...masterData, ...expenseMaster];
-                        } else if (elmId === 'make-item') {
-                            masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === 'パーツ2');
-                        } else if (elmId === 'sale-item') {
-                            masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === '単体商品');
-                        } else if (elmId === 'buy-item') {
-                            // 仕入品目: パーツまたは単体商品
-                            masterData = masterData.filter(r => r['カテゴリ'] === 'パーツ' || r['カテゴリ'] === '単体商品' || r['カテゴリ'] === 'パーツ2');
+            else if (type === 'select' || type === 'suggest' || type === 'suggest-strict') {
+                let options = [];
+                if (masterName) {
+                    if (masterName === 'M_ステータス') {
+                        const statuses = (masters['M_ステータス'] || [])
+                            .filter(s => (parseInt(s['使用FLG']) === 1 || s['使用FLG'] == 1) && s['対象機能'] === ctrl['対象機能'] && s['画面名称'] === ctrl['画面名称'])
+                            .sort((a, b) => (a['表示順'] || 0) - (b['表示順'] || 0));
+                        options = statuses.map(s => s['ステータス名称']);
+                    } else {
+                        let masterData = masters[masterName] || [];
+                        if (masterName === 'M_商品') {
+                            if (elmId === 'exp-item') {
+                                const prodCategories = ['経費', '梱包材', '資材'];
+                                masterData = masterData.filter(r => prodCategories.includes(r['カテゴリ']));
+                                const expenseMaster = (masters['M_経費品名'] || []).filter(r => parseInt(r['使用FLG']) === 1 || r['使用FLG'] == 1);
+                                masterData = [...masterData, ...expenseMaster];
+                            } else if (elmId === 'make-item') {
+                                masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === 'パーツ2');
+                            } else if (elmId === 'sale-item') {
+                                masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === '単体商品');
+                            } else if (elmId === 'buy-item') {
+                                masterData = masterData.filter(r => r['カテゴリ'] === 'パーツ' || r['カテゴリ'] === '単体商品' || r['カテゴリ'] === 'パーツ2');
+                            }
+                        }
+                        if (masterName === 'M_仕入先') {
+                            if (elmId === 'buy-vendor') masterData = masterData.filter(r => r['用途区分'] == 1 || r['用途区分'] == 3);
+                            else if (elmId === 'exp-vendor') masterData = masterData.filter(r => r['用途区分'] == 2 || r['用途区分'] == 3);
+                        }
+                        if (masterData && masterData.length > 0) {
+                            const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称'];
+                            const keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
+                            if (keyField) options = masterData.map(r => r[keyField]);
                         }
                     }
-
-                    if (masterName === 'M_仕入先') {
-                        if (elmId === 'buy-vendor') {
-                            masterData = masterData.filter(r => r['用途区分'] == 1 || r['用途区分'] == 3);
-                        } else if (elmId === 'exp-vendor') {
-                            masterData = masterData.filter(r => r['用途区分'] == 2 || r['用途区分'] == 3);
-                        }
-                    }
-
-                    if (masterData && masterData.length > 0) {
-                        // 除外リストを考慮して表示用フィールド（品名、仕入先、支払方法等）を特定
-                        const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称'];
-                        const keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
-                        if (keyField) {
-                            populateElement(elm, type, masterData.map(r => r[keyField]));
-                        }
-                    }
+                } else if (ctrl['固定値の内容']) {
+                    options = ctrl['固定値の内容'].split(',').map(s => s.trim());
                 }
 
-                // suggest / suggest-strict タイプにはクリアボタンを追加
+                if (options.length > 0) {
+                    if (elm.tagName === 'INPUT' && (type === 'suggest' || type === 'suggest-strict')) {
+                        elm.type = 'text'; // サジェストの表示安定性を優先してテキスト型に変更
+                        if (!elm.hasAttribute('list')) {
+                            const listId = elmId + '-list';
+                            elm.setAttribute('list', listId);
+                            if (!document.getElementById(listId)) {
+                                const dl = document.createElement('datalist');
+                                dl.id = listId;
+                                elm.parentNode.appendChild(dl);
+                            }
+                        }
+                    }
+                    populateElement(elm, type, options);
+                }
+
                 if (type === 'suggest' || type === 'suggest-strict') {
                     addClearButton(elm);
                     elm.dataset.type = type;
-                    elm.dataset.master = masterName;
+                    elm.dataset.master = masterName || "";
                 }
             }
         });
@@ -805,20 +828,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyStockFilters() {
         const stockSearchInput = document.getElementById('stock-search-input');
         const showHiddenToggle = document.getElementById('show-hidden-toggle');
+        const thresholdZeroToggle = document.getElementById('stock-threshold-zero-only');
+        const uncheckedOnlyToggle = document.getElementById('stock-unchecked-only');
 
         const term = (stockSearchInput ? stockSearchInput.value : "").toLowerCase().trim();
         const showHidden = showHiddenToggle ? showHiddenToggle.checked : false;
+        const thresholdZeroOnly = thresholdZeroToggle ? thresholdZeroToggle.checked : false;
+        const uncheckedOnly = uncheckedOnlyToggle ? uncheckedOnlyToggle.checked : false;
+        
         const allStockProducts = currentMasters['T_在庫集計'] || [];
 
         const filtered = allStockProducts.filter(p => {
             const name = (p['品名'] || "").toLowerCase();
             const category = (p['カテゴリ'] || "").toLowerCase();
             const useFlag = parseInt(p['使用FLG']) !== 0;
+            const threshold = parseFloat(p['閾値']) || 0;
+            const isUnchecked = !p['最終棚卸日'];
 
             const matchesSearch = name.includes(term) || category.includes(term);
             const matchesVisibility = showHidden || useFlag;
+            const matchesThreshold = !thresholdZeroOnly || threshold === 0;
+            const matchesUnchecked = !uncheckedOnly || isUnchecked;
 
-            return matchesSearch && matchesVisibility;
+            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked;
         });
 
         renderStockList(filtered);
@@ -1206,7 +1238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     defaultDates.forEach(el => el.value = ymd);
 
                     const defaultQtys = tabContent.querySelectorAll('input[type="number"]');
-                    defaultQtys.forEach(el => { if (el.id.includes('quantity')) el.value = '1'; });
+                    defaultQtys.forEach(el => { if (el.id.includes('quantity')) el.value = ''; });
                 }
                 // 履歴と在庫状況を即時更新してUIに反映 (高速化対応)
                 if (response.newRecord && response.sheetName) {

@@ -228,7 +228,7 @@
                         </div>
                         <div class="input-group">
                             <label>製造数量</label>
-                            <input type="number" id="make-quantity" value="1" min="1">
+                            <input type="text" id="make-quantity" min="1" placeholder="数量を入力">
                         </div>
                     </div>
                     <div class="input-group">
@@ -415,6 +415,13 @@
                         </div>
                     </div>
                     <div class="inventory-toggles-wrapper">
+                        <div class="show-hidden-container">
+                            <span>閾値0のみ</span>
+                            <label class="switch">
+                                <input type="checkbox" id="stock-threshold-zero-only">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                         <div class="show-hidden-container">
                             <span>未確認のみ</span>
                             <label class="switch">
