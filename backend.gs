@@ -1586,6 +1586,7 @@ function checkBOMAvailability(productName, makeQty) {
  * @param {string} note 備考
  */
 function registerStocktake(stocktakeData, note) {
+  StockManager.init(); // 在庫管理データをメモリにロード
   const stockSheet = SS.getSheetByName('T_在庫管理');
   const histSheet = SS.getSheetByName('T_棚卸履歴');
   if (!stockSheet || !histSheet) return { status: 'error', message: 'シートが見つかりません' };
@@ -1633,6 +1634,7 @@ function registerStocktake(stocktakeData, note) {
   });
 
   // 3. 在庫集計の更新（在庫数のみ）
+  StockManager.flush(); // メモリ上の変更をシートに反映
   updateInventorySummary();
   SpreadsheetApp.flush();
 
@@ -1643,9 +1645,8 @@ function registerStocktake(stocktakeData, note) {
  * プラス調整：最新単価を引き継いで新規入庫
  */
 function processSurplusAdjustment(adj, adjId, timestamp, dateOnly) {
-  const stockSheet = SS.getSheetByName('T_在庫管理');
-  const data = stockSheet.getDataRange().getValues();
-  const headers = data[0];
+  const headers = StockManager.headers;
+  const data = StockManager.data;
   
   // マスタからカテゴリ取得（recordInventory関数と同じ方式）
   const pSheet = SS.getSheetByName('M_商品');
@@ -1659,6 +1660,7 @@ function processSurplusAdjustment(adj, adjId, timestamp, dateOnly) {
   const nameCol = headers.indexOf('品名');
   const priceCol = headers.indexOf('単価');
   const idCol = headers.indexOf('在庫管理ID');
+  
   for (let i = data.length - 1; i > 0; i--) {
     if (data[i][nameCol] === adj.itemName && (parseFloat(data[i][priceCol]) || 0) > 0) {
       latestPrice = parseFloat(data[i][priceCol]);
@@ -1667,25 +1669,25 @@ function processSurplusAdjustment(adj, adjId, timestamp, dateOnly) {
     }
   }
 
-  const id = generateNextId(stockSheet, 'INV');
-  const newRow = new Array(headers.length).fill("");
-  
-  newRow[headers.indexOf('在庫管理ID')] = id;
-  newRow[headers.indexOf('品名')] = adj.itemName;
-  newRow[headers.indexOf('商品区分')] = category;
-  newRow[headers.indexOf('入出庫日')] = dateOnly;
-  newRow[headers.indexOf('区分')] = '棚卸入庫';
-  newRow[headers.indexOf('数量')] = adj.diffQty; 
-  newRow[headers.indexOf('単価')] = latestPrice;
-  newRow[headers.indexOf('棚卸ID')] = adjId;
-  newRow[headers.indexOf('仕入先')] = '棚卸調整';
-  newRow[headers.indexOf('引当元管理ID')] = latestSourceId;
-  newRow[headers.indexOf('引当完了')] = 0; // 在庫が増えるため、完了ではない
-  newRow[headers.indexOf('実在庫数量')] = adj.diffQty; 
-  newRow[headers.indexOf('備考')] = `実${adj.actualQty}(理${adj.logicalQty})`;
-  newRow[headers.indexOf('最終更新日')] = timestamp;
+  const id = StockManager.getNextInvId();
+  const rowObj = {
+    '在庫管理ID': id,
+    '品名': adj.itemName,
+    '商品区分': category,
+    '入出庫日': dateOnly,
+    '区分': '棚卸入庫',
+    '数量': adj.diffQty,
+    '単価': latestPrice,
+    '棚卸ID': adjId,
+    '仕入先': '棚卸調整',
+    '引当元管理ID': latestSourceId,
+    '引当完了': 0,
+    '実在庫数量': adj.diffQty,
+    '備考': `実${adj.actualQty}(理${adj.logicalQty})`,
+    '最終更新日': timestamp
+  };
 
-  stockSheet.appendRow(newRow);
+  StockManager.appendRow(rowObj);
 }
 
 
@@ -1693,9 +1695,8 @@ function processSurplusAdjustment(adj, adjId, timestamp, dateOnly) {
  * マイナス調整：既存在庫からFIFOで消し込み
  */
 function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
-  const stockSheet = SS.getSheetByName('T_在庫管理');
-  const data = stockSheet.getDataRange().getValues();
-  const headers = data[0];
+  const headers = StockManager.headers;
+  const data = StockManager.data;
   
   const nameCol = headers.indexOf('品名');
   const actualQtyCol = headers.indexOf('実在庫数量');
@@ -1711,7 +1712,6 @@ function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
     if (shortageLeft <= 0) break;
     
     if (data[i][nameCol] === adj.itemName && (parseFloat(data[i][actualQtyCol]) || 0) > 0) {
-      const rowNum = i + 1;
       const available = parseFloat(data[i][actualQtyCol]);
       const consume = Math.min(available, shortageLeft);
       const unitPrice = parseFloat(data[i][unitPriceCol]) || 0;
@@ -1719,10 +1719,11 @@ function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
 
       // 元行の実在庫を減らす
       const newActual = available - consume;
-      stockSheet.getRange(rowNum, actualQtyCol + 1).setValue(newActual);
-      if (newActual === 0) {
-        stockSheet.getRange(rowNum, statusCol + 1).setValue(1);
+      data[i][actualQtyCol] = newActual;
+      if (newActual === 0 && statusCol !== -1) {
+        data[i][statusCol] = 1;
       }
+      StockManager.markModified(i);
 
       // 調整行のデータを準備
       adjustments.push({
@@ -1735,7 +1736,7 @@ function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
     }
   }
 
-  // マスタからカテゴリ取得（棚卸入庫やrecordInventoryと同じ方式）
+  // マスタからカテゴリ取得
   const pSheet = SS.getSheetByName('M_商品');
   const pData = pSheet ? pSheet.getDataRange().getValues() : [];
   const pRow = pData.slice(1).find(r => r[1] === adj.itemName);
@@ -1743,24 +1744,25 @@ function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
 
   // 調整行（証拠）の追加
   adjustments.forEach(item => {
-    const id = generateNextId(stockSheet, 'INV');
-    const newRow = new Array(headers.length).fill("");
-    
-    newRow[headers.indexOf('在庫管理ID')] = id;
-    newRow[headers.indexOf('品名')] = adj.itemName;
-    newRow[headers.indexOf('商品区分')] = category;
-    newRow[headers.indexOf('入出庫日')] = dateOnly;
-    newRow[headers.indexOf('区分')] = '棚卸出庫';
-    newRow[headers.indexOf('数量')] = item.qty;
-    newRow[headers.indexOf('単価')] = item.price;
-    newRow[headers.indexOf('棚卸ID')] = adjId;
-    newRow[headers.indexOf('仕入先')] = '棚卸調整';
-    newRow[headers.indexOf('引当元管理ID')] = item.sourceId;
-    newRow[headers.indexOf('引当完了')] = 1;
-    newRow[headers.indexOf('備考')] = `実${adj.actualQty}(理${adj.logicalQty})`;
-    newRow[headers.indexOf('最終更新日')] = timestamp;
+    const id = StockManager.getNextInvId();
+    const rowObj = {
+      '在庫管理ID': id,
+      '品名': adj.itemName,
+      '商品区分': category,
+      '入出庫日': dateOnly,
+      '区分': '棚卸出庫',
+      '数量': item.qty,
+      '単価': item.price,
+      '棚卸ID': adjId,
+      '仕入先': '棚卸調整',
+      '引当元管理ID': item.sourceId,
+      '引当完了': 1,
+      '実在庫数量': 0,
+      '備考': `実${adj.actualQty}(理${adj.logicalQty})`,
+      '最終更新日': timestamp
+    };
 
-    stockSheet.appendRow(newRow);
+    StockManager.appendRow(rowObj);
   });
 }
 
