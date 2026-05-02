@@ -950,6 +950,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderStockList(filtered);
     }
 
+    /**
+     * 最新の生データから在庫マスタを同期し、UIをリフレッシュする
+     */
+    function refreshInventoryUI() {
+        if (lastRawData['T_在庫集計']) {
+            console.log("Syncing inventory masters from raw data...");
+            currentMasters['T_在庫集計'] = convertRawToObjects(lastRawData['T_在庫集計']);
+            applyStockFilters();
+        }
+    }
+
     function populateElement(elm, type, options) {
         if (elm.tagName === 'SELECT') {
             const currentVal = elm.value;
@@ -1353,12 +1364,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     renderAllHistory(processed);
                     
                     console.timeEnd('Client:IncrementalUpdate(New)');
-                } else if (response.data && response.data.historyData) {
-                    // フォールバック（従来形式）
-                    lastRawData = Object.assign({}, lastRawData, response.data.historyData.rawData);
+                } else if ((response.data && response.data.historyData) || response.historyData) {
+                    // 履歴データが含まれている場合の処理
+                    const hData = response.historyData || response.data.historyData;
+                    lastRawData = Object.assign({}, lastRawData, hData.rawData);
                     const processed = processClientData(lastRawData);
                     lastHistoryData = processed;
                     renderAllHistory(processed);
+                    refreshInventoryUI(); // 在庫一覧も更新
                 } else {
                     // 最終手段
                     await fetchHistory(refreshScope);
@@ -1844,12 +1857,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const processed = processClientData(lastRawData);
                     lastHistoryData = processed;
                     renderAllHistory(processed);
+                    refreshInventoryUI(); // 在庫一覧も更新
                     console.timeEnd('Client:MergeAndRender');
                 } else {
                     // フォールバック（旧形式）
                     const processed = processClientData(response.data.rawData || response.data);
                     lastHistoryData = processed;
                     renderAllHistory(processed);
+                    refreshInventoryUI(); // 在庫一覧も更新
                 }
             }
         } catch (e) {
@@ -2271,12 +2286,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     renderAllHistory(processed);
                     
                     console.timeEnd('Client:IncrementalUpdate(Update)');
-                } else if (response.data && response.data.historyData) {
-                    // 従来形式のフォールバック
-                    lastRawData = Object.assign({}, lastRawData, response.data.historyData.rawData);
+                } else if ((response.data && response.data.historyData) || response.historyData) {
+                    // 履歴データが含まれている場合の処理
+                    const hData = response.historyData || response.data.historyData;
+                    lastRawData = Object.assign({}, lastRawData, hData.rawData);
                     const processed = processClientData(lastRawData);
                     lastHistoryData = processed;
                     renderAllHistory(processed);
+                    refreshInventoryUI(); // 在庫一覧も更新
                 } else {
                     // フォールバック（少し待ってから再読み込み）
                     setTimeout(() => fetchHistory(refreshScope), 1000);

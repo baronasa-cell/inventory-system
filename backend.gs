@@ -522,6 +522,14 @@ const StockManager = {
   markModified: function(rowIndex) {
     this.modifiedRows.add(rowIndex);
     this.isDataModified = true;
+    
+    // 変更された行の品名を記録（再集計のため）
+    if (this.data && this.data[rowIndex]) {
+      const nameCol = this.headers.indexOf('品名');
+      if (nameCol !== -1) {
+        this.changedItems.add(this.data[rowIndex][nameCol]);
+      }
+    }
   },
 
   getNextInvId: function() {
