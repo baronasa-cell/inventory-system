@@ -2912,8 +2912,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const product = currentMasters['M_商品'].find(r => r['品名'] === currentUploadItemName);
                 if (product) product['画像URL'] = response.url;
 
-                // 表示を更新
-                renderStockList(currentMasters['T_在庫集計'] || []);
+                // フィルタを適用した状態で表示を更新
+                applyStockFilters();
                 // プレビュー表示中のものがあれば更新
                 setupImagePreviewListeners(); // 再描画は不要だがキャッシュ更新の意味で
 
