@@ -943,29 +943,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         options = statuses.map(s => s['ステータス名称']);
                     } else {
                         let masterData = masters[masterName] || [];
-                        if (masterName === 'M_商品') {
-                            if (elmId === 'exp-item') {
-                                const prodCategories = ['経費', '梱包材', '資材'];
-                                masterData = masterData.filter(r => prodCategories.includes(r['カテゴリ']));
-                                const expenseMaster = (masters['M_経費品名'] || []).filter(r => parseInt(r['使用FLG']) === 1 || r['使用FLG'] == 1);
-                                masterData = [...masterData, ...expenseMaster];
-                            } else if (elmId === 'make-item') {
-                                masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === 'パーツ2');
-                            } else if (elmId === 'sale-item') {
-                                masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === '単体商品');
-                                if (currentMasters['T_在庫集計']) {
-                                    const inStockItems = currentMasters['T_在庫集計']
-                                        .filter(stock => (parseFloat(stock['現在庫数']) || 0) > 0)
-                                        .map(stock => stock['品名']);
-                                    masterData = masterData.filter(r => inStockItems.includes(r['品名']));
-                                }
-                            } else if (elmId === 'buy-item') {
-                                masterData = masterData.filter(r => r['カテゴリ'] === 'パーツ' || r['カテゴリ'] === '単体商品' || r['カテゴリ'] === 'パーツ2');
-                            }
-                        }
-                        if (masterName === 'M_仕入先') {
-                            if (elmId === 'buy-vendor') masterData = masterData.filter(r => r['用途区分'] == 1 || r['用途区分'] == 3);
-                            else if (elmId === 'exp-vendor') masterData = masterData.filter(r => r['用途区分'] == 2 || r['用途区分'] == 3);
+                        if (ctrl['抽出条件']) {
+                            masterData = parseAndApplyFilter(masterData, ctrl['抽出条件'], masters);
                         }
                         if (masterData && masterData.length > 0) {
                             const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称'];
@@ -3241,6 +3220,66 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, 100);
         }
     };
+
+    /**
+     * マスタの抽出条件を解析してデータをフィルタリングする (Proposal 5)
+     * @param {Array} data フィルタリング対象の配列
+     * @param {string} filterStr 抽出条件文字列 (例: カテゴリ:商品,パーツ & 在庫:1以上)
+     * @param {Object} allMasters 全マスタデータ (在庫参照用)
+     */
+    function parseAndApplyFilter(data, filterStr, allMasters) {
+        if (!filterStr || !data || data.length === 0) return data;
+
+        // & で AND 条件を分割
+        const conditions = filterStr.split('&').map(s => s.trim());
+        let filteredData = [...data];
+
+        conditions.forEach(cond => {
+            const parts = cond.split(':');
+            if (parts.length < 2) return;
+
+            const key = parts[0].trim();
+            const valStr = parts[1].trim();
+
+            if (key === '在庫' || key === '現在庫数') {
+                // 在庫数によるフィルタリング (T_在庫集計を参照)
+                const stockData = allMasters['T_在庫集計'] || [];
+                const match = valStr.match(/([<>=]+|以上|以下|超|未満)?\s*(\d+)/);
+                if (match) {
+                    const op = match[1] || '>=';
+                    const targetVal = parseFloat(match[2]);
+                    
+                    const inStockItems = stockData.filter(stock => {
+                        const currentVal = parseFloat(stock['現在庫数']) || 0;
+                        if (op === '>=' || op === '以上') return currentVal >= targetVal;
+                        if (op === '<=' || op === '以下') return currentVal <= targetVal;
+                        if (op === '>' || op === '超') return currentVal > targetVal;
+                        if (op === '<' || op === '未満') return currentVal < targetVal;
+                        return currentVal === targetVal;
+                    }).map(stock => stock['品名']);
+
+                    filteredData = filteredData.filter(item => {
+                        const itemName = item['品名'] || item['商品名'] || item['完成品名'];
+                        return inStockItems.includes(itemName);
+                    });
+                }
+            } else if (key === 'マスタ統合') {
+                // 特殊処理: 指定された別マスタをマージする
+                const otherMasterName = valStr;
+                const otherData = (allMasters[otherMasterName] || []).filter(r => (parseInt(r['使用FLG']) || 0) === 1);
+                filteredData = [...filteredData, ...otherData];
+            } else {
+                // 通常の列名によるフィルタリング
+                const allowedValues = valStr.split(',').map(v => v.trim());
+                filteredData = filteredData.filter(item => {
+                    const itemVal = (item[key] || '').toString().trim();
+                    return allowedValues.includes(itemVal);
+                });
+            }
+        });
+
+        return filteredData;
+    }
 
     /**
      * 在庫一覧のフィルタ設定
