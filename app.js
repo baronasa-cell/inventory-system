@@ -524,7 +524,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const items = new Set();
         data.forEach(item => {
             if (item['ステータス']) statuses.add(item['ステータス'].trim());
-            const itemName = item['完成品名'] || item['品名'];
+            const itemName = item['品名'] || item['完成品名'];
             if (itemName) items.add(itemName.trim());
         });
 
@@ -1321,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             ],
             'T_製造': [
                 { key: 'date', label: '製造開始日', required: true },
-                { key: 'item', label: '完成品名', required: true },
+                { key: 'item', label: '品名', required: true },
                 { key: 'quantity', label: '製造数量', required: true, min: 1 }
             ],
             'T_販売': [
@@ -2058,7 +2058,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (itemFilter) {
                 renderData = renderData.filter(item => {
-                    const name = (item['完成品名'] || item['品名'] || '').trim();
+                    const name = (item['品名'] || item['完成品名'] || '').trim();
                     return name === itemFilter;
                 });
             }
