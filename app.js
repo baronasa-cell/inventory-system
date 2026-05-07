@@ -306,9 +306,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // 終了済みステータスの判定
                 let isFinished = excludeList.includes(status);
-                if (sheetName === 'T_製造') {
-                    isFinished = isFinished || (status === '製造完了' || status === '梱包完了');
-                }
 
                 // 未完了（進行中）の案件は、期間に関わらずすべて表示する
                 if (!isFinished) return true;
@@ -391,7 +388,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 history[sheetName] = filtered
                     .filter(r => !excludeList.includes((r['ステータス'] || "").toString().trim()))
-                    .slice(-50) // 直近50件を抽出
                     .sort((a, b) => {
                         // 1. ステータス優先度 (昇順: マスタの表示順)
                         const pA = priorities[(a['ステータス'] || "").toString().trim()] || 999;
@@ -3136,8 +3132,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cardClass = isCritical ? 'critical' : 'warning';
 
             // 進行中の取引があるか確認 (提案20, 24)
-            const mfgCount = activeMfg.filter(m => (m['完成品名'] || '').toString().trim() === itemName.trim()).length;
-            const purCount = activePur.filter(p => (p['品名'] || '').toString().trim() === itemName.trim()).length;
+            // T_製造は「完成品名」または「品名」、T_仕入は「品名」または「商品名」をチェック
+            const mfgCount = activeMfg.filter(m => {
+                const name = (m['完成品名'] || m['品名'] || m['商品名'] || '').toString().trim();
+                return name === itemName.trim();
+            }).length;
+            
+            const purCount = activePur.filter(p => {
+                const name = (p['品名'] || p['商品名'] || p['完成品名'] || '').toString().trim();
+                return name === itemName.trim();
+            }).length;
             
             let statusBadge = '';
             if (mfgCount > 0) {
@@ -3147,7 +3151,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // M_商品からカテゴリ情報を取得
-            const product = (currentMasters['M_商品'] || []).find(m => (m['品名'] || '').toString().trim() === itemName.trim());
+            const product = (currentMasters['M_商品'] || []).find(m => {
+                const name = (m['品名'] || '').toString().trim();
+                return name === itemName.trim();
+            });
             const category = product ? product['カテゴリ'] : "";
 
             const isMade = (category === '商品' || category === 'パーツ2');
