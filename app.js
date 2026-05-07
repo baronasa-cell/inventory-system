@@ -479,6 +479,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sCompleted = document.getElementById('sales-completed-count');
         if (sCompleted) sCompleted.textContent = (summary.completedSalesCount || 0);
 
+        // 販売履歴の絞り込み用オプションを更新
+        updateSalesFilterOptions(history['T_販売']);
+
         renderHistoryCards('purchase', history['T_仕入']);
         renderHistoryCards('expense', history['T_経費']);
         renderHistoryCards('manufacturing', history['T_製造']);
@@ -487,6 +490,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         // ナビゲーションバッジの更新
         updateNavBadges();
     }
+
+    /**
+     * 販売履歴のフィルターオプションを更新する
+     */
+    function updateSalesFilterOptions(data) {
+        if (!data) return;
+        const statusSelect = document.getElementById('sales-history-status-filter');
+        const buyerSelect = document.getElementById('sales-history-buyer-filter');
+        if (!statusSelect || !buyerSelect) return;
+
+        const currentStatus = statusSelect.value;
+        const currentBuyer = buyerSelect.value;
+
+        const statuses = new Set();
+        const buyers = new Set();
+        data.forEach(item => {
+            if (item['ステータス']) statuses.add(item['ステータス'].trim());
+            if (item['売先']) buyers.add(item['売先'].trim());
+        });
+
+        statusSelect.innerHTML = '<option value="">すべて</option>';
+        [...statuses].sort().forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            statusSelect.appendChild(opt);
+        });
+
+        buyerSelect.innerHTML = '<option value="">すべて</option>';
+        [...buyers].sort().forEach(b => {
+            const opt = document.createElement('option');
+            opt.value = b;
+            opt.textContent = b;
+            buyerSelect.appendChild(opt);
+        });
+
+        if (statuses.has(currentStatus)) statusSelect.value = currentStatus;
+        if (buyers.has(currentBuyer)) buyerSelect.value = currentBuyer;
+    }
+    
+    window.applySalesHistoryFilter = function() {
+        if (!lastHistoryData || !lastHistoryData.history) return;
+        renderHistoryCards('sales', lastHistoryData.history['T_販売']);
+    };
 
     /**
      * ナビゲーションバッジの更新
@@ -1969,6 +2016,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (!data || data.length === 0) {
             container.innerHTML = '<p class="empty-msg">現在進行中の履歴はありません</p>';
+            return;
+        }
+
+        // --- 絞り込みロジック (A案: サマリーは全体のまま、リストだけ絞る) ---
+        let renderData = data;
+        if (tab === 'sales') {
+            const statusFilter = document.getElementById('sales-history-status-filter')?.value;
+            const buyerFilter = document.getElementById('sales-history-buyer-filter')?.value;
+            
+            if (statusFilter) {
+                renderData = renderData.filter(item => (item['ステータス'] || '').trim() === statusFilter);
+            }
+            if (buyerFilter) {
+                renderData = renderData.filter(item => (item['売先'] || '').trim() === buyerFilter);
+            }
+        }
+
+        if (!renderData || renderData.length === 0) {
+            container.innerHTML = '<p class="empty-msg">条件に一致する履歴はありません</p>';
             return;
         }
 

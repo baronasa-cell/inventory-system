@@ -490,6 +490,23 @@
                         発送・取引待ち
                     </h2>
                     
+                    <div class="history-filter-container glass-card shadow-none" style="padding: 12px; margin-bottom: 16px; background: rgba(255,255,255,0.4);">
+                        <div class="input-grid">
+                            <div class="input-group mini" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">ステータス</label>
+                                <select id="sales-history-status-filter" style="padding: 6px 10px; font-size: 13px; height: 36px;" onchange="applySalesHistoryFilter()">
+                                    <option value="">すべて</option>
+                                </select>
+                            </div>
+                            <div class="input-group mini" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">売先</label>
+                                <select id="sales-history-buyer-filter" style="padding: 6px 10px; font-size: 13px; height: 36px;" onchange="applySalesHistoryFilter()">
+                                    <option value="">すべて</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div id="sales-history-list">
                         <div class="empty-history" style="padding: 40px; text-align: center; color: var(--text-muted);">
                             <ion-icon name="sync-outline" class="spinning" style="font-size: 24px; margin-bottom: 8px;"></ion-icon>
