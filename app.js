@@ -738,9 +738,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Inventory Search & Filter Logic
         const stockSearchInput = document.getElementById('stock-search-input');
         const stockSearchClear = document.getElementById('stock-search-clear');
-        const showHiddenToggle = document.getElementById('show-hidden-toggle');
-        const thresholdZeroToggle = document.getElementById('stock-threshold-zero-only');
-        const uncheckedOnlyToggle = document.getElementById('stock-unchecked-only');
+
 
         if (stockSearchInput && stockSearchClear) {
             stockSearchInput.addEventListener('input', (e) => {
