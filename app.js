@@ -249,7 +249,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function processClientData(rawData, scope) {
         console.time('Client:processClientData');
         const history = {};
-        const summary = { purchase: 0, expense: 0, sales: 0, businessSales: 0, personalSales: 0 };
+        const summary = { purchase: 0, expense: 0, sales: 0, businessSales: 0, personalSales: 0, expectedSales: 0, completedSalesCount: 0 };
         const recentAll = [];
         const personalSalesByMonth = {};
 
@@ -283,6 +283,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const records = convertRawToObjects(rawData[sheetName]);
             const excludeList = tables[sheetName] || [];
+
+            // 履歴の期間フィルタに依存しない全体集計（個人用売上の全期間集計用）
+            if (sheetName === 'T_販売') {
+                records.forEach(r => {
+                    const status = (r['ステータス'] || "").toString().trim();
+                    if (status === '完了' && (r['管理区分'] == 1 || r['管理対象外'] == 1)) {
+                        const price = parseFloat(r['価格'] || r['合計金額'] || r['販売価格'] || 0);
+                        const cDateStr = r['取引完了日'] || r['販売開始日'] || "";
+                        const cDate = new Date(cDateStr);
+                        if (!isNaN(cDate.getTime())) {
+                            const ym = `${cDate.getFullYear()}-${String(cDate.getMonth() + 1).padStart(2, '0')}`;
+                            personalSalesByMonth[ym] = (personalSalesByMonth[ym] || 0) + price;
+                        }
+                    }
+                });
+            }
 
             // フィルタリング（期間とステータス）
             const filtered = records.filter(r => {
@@ -319,19 +335,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const isThisMonth = d.getFullYear() === thisYear && d.getMonth() === thisMonth;
                 const price = parseFloat(r['価格'] || r['合計金額'] || r['販売価格'] || 0);
 
-                if (isThisMonth) {
+                if (sheetName === 'T_販売' && status === '完了') {
+                    // 販売は「取引完了日」ベースで今月かどうかを判定（開始日が先月でも完了が今月なら今月の売上）
+                    const compDate = new Date(r['取引完了日'] || dateVal);
+                    if (!isNaN(compDate.getTime()) && compDate.getFullYear() === thisYear && compDate.getMonth() === thisMonth) {
+                        const isPersonal = (r['管理区分'] == 1 || r['管理対象外'] == 1);
+                        if (isPersonal) summary.personalSales += price;
+                        else summary.businessSales += price;
+                        summary.sales += price;
+                        summary.completedSalesCount++;
+                    }
+                } else if (isThisMonth) {
+                    // 仕入と経費は発生日（dateVal）ベース
                     if (sheetName === 'T_仕入' && (status === '入庫済み' || status === '入庫済')) {
                         summary.purchase += price;
                     } else if (sheetName === 'T_経費' && status === '完了') {
                         summary.expense += price;
-                    } else if (sheetName === 'T_販売' && status === '完了') {
-                        // 販売のみ「取引完了日」ベースで今月かどうかを再判定
+                    }
+                }
+
+                // 売上見込みの計算（進行中の販売、または今月完了した販売）
+                if (sheetName === 'T_販売' && status !== 'キャンセル') {
+                    if (status !== '完了') {
+                        summary.expectedSales += price; // 進行中
+                    } else {
+                        // 完了の場合は今月の売上のみを見込みに含める
                         const compDate = new Date(r['取引完了日'] || "");
                         if (!isNaN(compDate.getTime()) && compDate.getFullYear() === thisYear && compDate.getMonth() === thisMonth) {
-                            const isPersonal = (r['管理区分'] == 1 || r['管理対象外'] == 1);
-                            if (isPersonal) summary.personalSales += price;
-                            else summary.businessSales += price;
-                            summary.sales += price;
+                            summary.expectedSales += price;
                         }
                     }
                 }
@@ -349,15 +380,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     dateStr: formatDate(d),
                     buyer: sheetName === 'T_販売' ? r['売先'] : null
                 });
-
-                // 個人用売上推移 (完了ベース・取引完了日ベースに統一)
-                if (sheetName === 'T_販売' && status === '完了' && (r['管理区分'] == 1 || r['管理対象外'] == 1)) {
-                    const cDate = new Date(r['取引完了日'] || "");
-                    if (!isNaN(cDate.getTime())) {
-                        const ym = `${cDate.getFullYear()}-${String(cDate.getMonth() + 1).padStart(2, '0')}`;
-                        personalSalesByMonth[ym] = (personalSalesByMonth[ym] || 0) + price;
-                    }
-                }
             });
 
             // 履歴タブ用（完了分を除外した最新50件を優先度順にソート）
@@ -450,6 +472,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sTotal.textContent = `¥${Math.round(businessSales).toLocaleString()}`;
             }
         }
+
+        const sExpected = document.getElementById('sales-expected-total');
+        if (sExpected) sExpected.textContent = `¥${Math.round(summary.expectedSales || 0).toLocaleString()}`;
+        
+        const sCompleted = document.getElementById('sales-completed-count');
+        if (sCompleted) sCompleted.textContent = (summary.completedSalesCount || 0);
 
         renderHistoryCards('purchase', history['T_仕入']);
         renderHistoryCards('expense', history['T_経費']);
