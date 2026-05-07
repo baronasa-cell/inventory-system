@@ -489,6 +489,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // ナビゲーションバッジの更新
         updateNavBadges();
+
+        // 帳簿(ダッシュボード)がアクティブなら再描画し、在庫アラートの状態(製造中/仕入中)を最新にする
+        const activeTab = document.querySelector('.nav-item.active');
+        if (activeTab && activeTab.getAttribute('data-target') === 'ledger') {
+            renderLedger();
+        }
     }
 
     /**
@@ -3130,8 +3136,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cardClass = isCritical ? 'critical' : 'warning';
 
             // 進行中の取引があるか確認 (提案20, 24)
-            const mfgCount = activeMfg.filter(m => m['完成品名'] === itemName).length;
-            const purCount = activePur.filter(p => p['品名'] === itemName).length;
+            const mfgCount = activeMfg.filter(m => (m['完成品名'] || '').toString().trim() === itemName.trim()).length;
+            const purCount = activePur.filter(p => (p['品名'] || '').toString().trim() === itemName.trim()).length;
             
             let statusBadge = '';
             if (mfgCount > 0) {
@@ -3141,7 +3147,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // M_商品からカテゴリ情報を取得
-            const product = (currentMasters['M_商品'] || []).find(m => m['品名'] === itemName);
+            const product = (currentMasters['M_商品'] || []).find(m => (m['品名'] || '').toString().trim() === itemName.trim());
             const category = product ? product['カテゴリ'] : "";
 
             const isMade = (category === '商品' || category === 'パーツ2');
