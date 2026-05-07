@@ -2044,17 +2044,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         function renderChunk() {
             const fragment = document.createDocumentFragment();
-            const limit = Math.min(index + CHUNK_SIZE, data.length);
+            const limit = Math.min(index + CHUNK_SIZE, renderData.length);
 
             for (; index < limit; index++) {
-                const item = data[index];
+                const item = renderData[index];
                 const card = createHistoryCardElement(tab, item);
                 fragment.appendChild(card);
             }
 
             container.appendChild(fragment);
 
-            if (index < data.length) {
+            if (index < renderData.length) {
                 requestAnimationFrame(renderChunk);
             }
         }
