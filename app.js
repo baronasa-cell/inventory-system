@@ -1021,11 +1021,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 優先度と表示順によるソート (提案10)
         filtered.sort((a, b) => {
-            const prioA = parseInt(a['優先度']) || 3; 
-            const prioB = parseInt(b['優先度']) || 3;
+            const prioA = parseInt(a['優先度']) || 999; 
+            const prioB = parseInt(b['優先度']) || 999;
             
             if (prioA !== prioB) {
-                return prioB - prioA; // 優先度が高い(5に近い)ものを上に
+                return prioA - prioB; // 優先度が小さい(1に近い)ものを上に
             }
             
             // 優先度が同じなら表示順

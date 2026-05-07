@@ -945,7 +945,7 @@ function updateInventorySummary() {
       const useFlag = pRow ? (parseInt(pRow['使用FLG']) === 0 ? 0 : 1) : 1; 
 
       const newRow = new Array(sumHeaders.length).fill("");
-      newRow[0] = 3;    // A列: 優先度 (デフォルト3)
+      newRow[0] = 9;    // A列: 優先度 (1〜9: 1が最優先)
       newRow[1] = 999;  // B列: 表示順 (デフォルト999)
       newRow[2] = name; // C列: 品名
       newRow[3] = cat;  // D列: カテゴリ
