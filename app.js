@@ -119,11 +119,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 1. まずキャッシュからマスタを読み込んでUIを構築（爆速起動用）
         loadMastersFromCache();
 
-        // 2. 最優先データ（販売＋サマリー）を取得して表示
-        await initSystem('essential');
-
-        // 3. 残りの履歴データをバックグラウンドで取得
-        loadBackgroundData();
+        // 2. データを一括取得して表示 (バッジ表示のために最初から全履歴を取得)
+        await initSystem('all');
 
         // ---- 3. Image Feature Initializations ----
         setupImagePreviewListeners();
@@ -195,34 +192,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    /**
-     * 残りのデータをバックグラウンドで読み込む
-     */
-    async function loadBackgroundData() {
-        console.log("Loading remaining history in background...");
-        setTimeout(async () => {
-            try {
-                const response = await fetchAPI('getHistory');
-                if (response.status === 'success') {
-                    console.time('Client:BackgroundProcess');
-                    if (response.data.isRaw) {
-                        // 生データをキャッシュに統合
-                        lastRawData = Object.assign({}, lastRawData, response.data.rawData);
-                        
-                        const processed = processClientData(lastRawData, 'all');
-                        lastHistoryData = processed;
-                    } else {
-                        lastHistoryData.history = Object.assign({}, lastHistoryData.history, response.data.history);
-                    }
-                    renderAllHistory(lastHistoryData);
-                    console.timeEnd('Client:BackgroundProcess');
-                    console.log("Background history load completed.");
-                }
-            } catch (e) {
-                console.warn("Background data load failed:", e);
-            }
-        }, 1500);
-    }
 
     /**
      * 二次元配列をオブジェクトに変換する
@@ -379,10 +348,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
 
-            // 履歴タブ用（完了分を除外した最新50件を優先度順にソート）
-            if (scope === 'essential' && sheetName !== 'T_販売') {
-                history[sheetName] = [];
-            } else {
                 const funcMap = { 'T_仕入': '仕入', 'T_経費': '経費', 'T_製造': '製造', 'T_販売': '販売' };
                 const priorities = statusPriorityMap[funcMap[sheetName]] || {};
 
@@ -399,7 +364,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const dB = new Date(b['入庫日'] || b['完了日'] || b['取引完了日'] || b['仕入日'] || b['製造完了日'] || b['販売開始日'] || b['製造開始日'] || 0);
                         return dA - dB;
                     });
-            }
         }
 
         const recentActions = recentAll
