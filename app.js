@@ -2144,7 +2144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             innerHTML += `
                 <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} (¥${formattedPrice}) 数量:${item['数量']}</div>
                 <div class="history-sub-info" style="margin-top: 4px; margin-bottom: 8px; font-size: 0.9em; color: var(--text-secondary);">
-                    ${item['仕入先'] || ''} &nbsp;&nbsp; 支払:${item['支払方法'] || ''} &nbsp;&nbsp; 区分:${item['区分'] || ''}
+                    ${item['仕入先'] || ''} &nbsp;&nbsp; ${item['支払方法'] || ''} &nbsp;&nbsp; ${item['区分'] || ''}
                 </div>
                 <div class="history-inputs-grid">
                     <div class="input-group mini"><label>仕入日</label><input type="date" class="date-input" data-header="仕入日" value="${formatISODate(item['仕入日'] || item['発注日'])}"></div>
@@ -2159,7 +2159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             innerHTML += `
                 <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} (¥${formattedPrice}) 数量:${item['数量']}</div>
                 <div class="history-sub-info" style="margin-top: 4px; margin-bottom: 8px; font-size: 0.9em; color: var(--text-secondary);">
-                    ${item['購入先'] || ''} &nbsp;&nbsp; 支払:${item['支払方法'] || ''} &nbsp;&nbsp; 仕訳:${item['仕訳'] || ''}
+                    ${item['購入先'] || ''} &nbsp;&nbsp; ${item['支払方法'] || ''} &nbsp;&nbsp; ${item['仕訳'] || ''}
                 </div>
                 <div class="history-inputs-grid">
                     <div class="input-group mini"><label>注文日</label><input type="date" class="date-input" data-header="注文日" value="${formatISODate(item['注文日'] || item['登録日'])}"></div>
