@@ -1300,7 +1300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const rules = {
             'T_仕入': [
-                { key: 'date', label: '発注日', required: true },
+                { key: 'date', label: '仕入日', required: true },
                 { key: 'status', label: 'ステータス', required: true },
                 { key: 'vendor', label: '仕入先', required: true },
                 { key: 'item', label: '品名', required: true },
@@ -1310,7 +1310,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { key: 'category', label: '区分', required: true }
             ],
             'T_経費': [
-                { key: 'date', label: '日付', required: true },
+                { key: 'date', label: '注文日', required: true },
                 { key: 'status', label: 'ステータス', required: true },
                 { key: 'account', label: '仕訳', required: true },
                 { key: 'vendor', label: '購入先', required: true },
