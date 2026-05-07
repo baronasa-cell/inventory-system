@@ -3686,12 +3686,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * 在庫一覧からカテゴリに応じた取引画面へ遷移し、対象品目を選択する (提案11改)
      */
+    /**
+     * 在庫一覧からカテゴリに応じた取引画面へ遷移し、対象品目を選択する (提案11改)
+     */
     window.navigateToTransactionForm = (itemName, category) => {
+        // カテゴリが「商品」の場合は選択モーダルを表示 (提案18/25 B案)
+        if (category === '商品') {
+            showActionSelectionModal(itemName);
+            return;
+        }
+
+        // それ以外は従来通り直接遷移
         let targetTab = 'purchase';
         let inputId = 'buy-item';
 
-        // カテゴリに応じた遷移先の振り分け
-        if (category === 'パーツ2' || category === '商品') {
+        if (category === 'パーツ2') {
             targetTab = 'manufacturing';
             inputId = 'make-item';
         } else if (category === '経費') {
@@ -3702,6 +3711,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId = 'buy-item';
         }
 
+        executeNavigation(targetTab, inputId, itemName);
+    };
+
+    /**
+     * 実際の遷移処理を実行する
+     */
+    function executeNavigation(targetTab, inputId, itemName) {
         // 1. タブを切り替える
         const navItem = document.querySelector(`.nav-item[data-target="${targetTab}"]`);
         if (navItem) navItem.click();
@@ -3724,6 +3740,52 @@ document.addEventListener('DOMContentLoaded', async () => {
                 setTimeout(() => form.style.boxShadow = '', 1500);
             }
         }, 100);
-    };
+    }
+
+    /**
+     * 遷移先選択モーダルを表示する (提案18/25 B案)
+     */
+    function showActionSelectionModal(itemName) {
+        let overlay = document.getElementById('action-selection-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'action-selection-overlay';
+            overlay.className = 'action-selection-overlay';
+            overlay.innerHTML = `
+                <div class="action-selection-card">
+                    <div class="action-selection-title">取引の登録</div>
+                    <div class="action-selection-item-name" id="action-selection-item-name"></div>
+                    <div class="action-btn-group">
+                        <button class="action-select-btn manufacturing" id="action-btn-manufacturing">
+                            <ion-icon name="hammer-outline"></ion-icon>製造登録へ
+                        </button>
+                        <button class="action-select-btn sales" id="action-btn-sales">
+                            <ion-icon name="cart-outline"></ion-icon>販売登録へ
+                        </button>
+                        <button class="action-select-btn cancel" id="action-btn-cancel">キャンセル</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+
+        const nameEl = document.getElementById('action-selection-item-name');
+        if (nameEl) nameEl.textContent = itemName;
+
+        const close = () => overlay.classList.remove('active');
+
+        document.getElementById('action-btn-manufacturing').onclick = () => {
+            close();
+            executeNavigation('manufacturing', 'make-item', itemName);
+        };
+        document.getElementById('action-btn-sales').onclick = () => {
+            close();
+            executeNavigation('sales', 'sale-item', itemName);
+        };
+        document.getElementById('action-btn-cancel').onclick = close;
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        setTimeout(() => overlay.classList.add('active'), 10);
+    }
 
 });

@@ -3355,6 +3355,105 @@ input:checked + .slider:before {
     z-index: 10;
 }
 
+/* Action Selection Modal (Proposal 18/25) */
+.action-selection-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.action-selection-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.action-selection-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 24px;
+    width: 90%;
+    max-width: 340px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+}
+
+.action-selection-overlay.active .action-selection-card {
+    transform: translateY(0);
+}
+
+.action-selection-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--dark-green);
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.action-selection-item-name {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    text-align: center;
+    word-break: break-all;
+}
+
+.action-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.action-select-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 14px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.action-select-btn.manufacturing {
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: white;
+}
+
+.action-select-btn.sales {
+    background: linear-gradient(135deg, #3b82f6, #60a5fa);
+    color: white;
+}
+
+.action-select-btn.cancel {
+    background: #f3f4f6;
+    color: #4b5563;
+    margin-top: 4px;
+}
+
+.action-select-btn:active {
+    transform: scale(0.97);
+    opacity: 0.9;
+}
+
+
 
 
 
