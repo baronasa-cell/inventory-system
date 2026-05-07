@@ -3486,6 +3486,50 @@ input:checked + .slider:before {
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
+/* ---------------------------------------------------
+ * Filter Chips UI (Inventory)
+ * --------------------------------------------------- */
+.inventory-filter-chips {
+    display: flex;
+    gap: 8px;
+    padding: 4px 0 12px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+}
+.inventory-filter-chips::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+.filter-chip {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    color: var(--text-color);
+    font-size: 0.9em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+.filter-chip:hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+.filter-chip.active {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 10px rgba(0, 102, 204, 0.3);
+}
+.filter-chip ion-icon {
+    font-size: 1.1em;
+}
+
 
 
 

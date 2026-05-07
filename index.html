@@ -160,28 +160,19 @@
                             </button>
                         </div>
                     </div>
-                    <div class="inventory-toggles-wrapper">
-                        <div class="show-hidden-container">
-                            <span>閾値0のみ</span>
-                            <label class="switch">
-                                <input type="checkbox" id="stock-threshold-zero-only">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <div class="show-hidden-container">
-                            <span>未確認のみ</span>
-                            <label class="switch">
-                                <input type="checkbox" id="stock-unchecked-only">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <div class="show-hidden-container">
-                            <span>非表示品を表示</span>
-                            <label class="switch">
-                                <input type="checkbox" id="show-hidden-toggle">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
+                    <div class="inventory-filter-chips">
+                        <button class="filter-chip" data-filter="in-stock">
+                            <ion-icon name="checkmark-circle-outline"></ion-icon>在庫あり
+                        </button>
+                        <button class="filter-chip" data-filter="threshold-zero">
+                            <ion-icon name="warning-outline"></ion-icon>閾値0
+                        </button>
+                        <button class="filter-chip" data-filter="unchecked">
+                            <ion-icon name="help-circle-outline"></ion-icon>未確認
+                        </button>
+                        <button class="filter-chip" data-filter="hidden">
+                            <ion-icon name="eye-off-outline"></ion-icon>非表示品
+                        </button>
                     </div>
                 </div>
 

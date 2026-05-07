@@ -756,23 +756,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        if (showHiddenToggle) {
-            showHiddenToggle.addEventListener('change', () => {
-                applyStockFilters();
-            });
-        }
-
-        if (thresholdZeroToggle) {
-            thresholdZeroToggle.addEventListener('change', () => {
-                applyStockFilters();
-            });
-        }
-
-        if (uncheckedOnlyToggle) {
-            uncheckedOnlyToggle.addEventListener('change', () => {
-                applyStockFilters();
-            });
-        }
+        // All filter chip logic is in setupStockFilters
 
         // Transaction Buttons
         setupTransactionSubmitters();
@@ -922,6 +906,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === 'パーツ2');
                             } else if (elmId === 'sale-item') {
                                 masterData = masterData.filter(r => r['カテゴリ'] === '商品' || r['カテゴリ'] === '単体商品');
+                                if (currentMasters['T_在庫集計']) {
+                                    const inStockItems = currentMasters['T_在庫集計']
+                                        .filter(stock => (parseFloat(stock['現在庫数']) || 0) > 0)
+                                        .map(stock => stock['品名']);
+                                    masterData = masterData.filter(r => inStockItems.includes(r['品名']));
+                                }
                             } else if (elmId === 'buy-item') {
                                 masterData = masterData.filter(r => r['カテゴリ'] === 'パーツ' || r['カテゴリ'] === '単体商品' || r['カテゴリ'] === 'パーツ2');
                             }
@@ -973,14 +963,16 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     function applyStockFilters() {
         const stockSearchInput = document.getElementById('stock-search-input');
-        const showHiddenToggle = document.getElementById('show-hidden-toggle');
-        const thresholdZeroToggle = document.getElementById('stock-threshold-zero-only');
-        const uncheckedOnlyToggle = document.getElementById('stock-unchecked-only');
+        const showHiddenChip = document.querySelector('.filter-chip[data-filter="hidden"]');
+        const thresholdZeroChip = document.querySelector('.filter-chip[data-filter="threshold-zero"]');
+        const uncheckedOnlyChip = document.querySelector('.filter-chip[data-filter="unchecked"]');
+        const inStockOnlyChip = document.querySelector('.filter-chip[data-filter="in-stock"]');
 
         const term = (stockSearchInput ? stockSearchInput.value : "").toLowerCase().trim();
-        const showHidden = showHiddenToggle ? showHiddenToggle.checked : false;
-        const thresholdZeroOnly = thresholdZeroToggle ? thresholdZeroToggle.checked : false;
-        const uncheckedOnly = uncheckedOnlyToggle ? uncheckedOnlyToggle.checked : false;
+        const showHidden = showHiddenChip ? showHiddenChip.classList.contains('active') : false;
+        const thresholdZeroOnly = thresholdZeroChip ? thresholdZeroChip.classList.contains('active') : false;
+        const uncheckedOnly = uncheckedOnlyChip ? uncheckedOnlyChip.classList.contains('active') : false;
+        const inStockOnly = inStockOnlyChip ? inStockOnlyChip.classList.contains('active') : false;
         
         const allStockProducts = currentMasters['T_在庫集計'] || [];
 
@@ -989,14 +981,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const category = (p['カテゴリ'] || "").toLowerCase();
             const useFlag = parseInt(p['使用FLG']) !== 0;
             const threshold = parseFloat(p['閾値']) || 0;
+            const stock = parseFloat(p['現在庫数']) || 0;
             const isUnchecked = !p['最終棚卸日'];
 
             const matchesSearch = name.includes(term) || category.includes(term);
             const matchesVisibility = showHidden || useFlag;
             const matchesThreshold = !thresholdZeroOnly || threshold === 0;
             const matchesUnchecked = !uncheckedOnly || isUnchecked;
+            const matchesInStock = !inStockOnly || stock > 0;
 
-            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked;
+            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked && matchesInStock;
         });
 
         renderStockList(filtered);
@@ -3189,32 +3183,18 @@ document.addEventListener('DOMContentLoaded', async () => {
      * 在庫一覧のフィルタ設定
      */
     function setupStockFilters() {
-        const uncheckedToggle = document.getElementById('stock-unchecked-only');
-        if (uncheckedToggle) {
-            uncheckedToggle.addEventListener('change', (e) => {
-                stocktakeSession.uncheckedOnly = e.target.checked;
-                // 検索ロジックを再実行してフィルタを反映させる
-                const searchInput = document.getElementById('stock-search-input');
-                if (searchInput) {
-                    searchInput.dispatchEvent(new Event('input'));
-                } else {
-                    // 検索入力がない場合（初期状態など）は直接フィルタ適用
-                    const showHiddenToggle = document.getElementById('show-hidden-toggle');
-                    const term = "";
-                    const showHidden = showHiddenToggle ? showHiddenToggle.checked : false;
-                    const allStockProducts = currentMasters['T_在庫集計'] || [];
-                    const filtered = allStockProducts.filter(p => {
-                        const name = (p['品名'] || "").toLowerCase();
-                        const category = (p['カテゴリ'] || "").toLowerCase();
-                        const useFlag = parseInt(p['使用FLG']) !== 0;
-                        const matchesSearch = name.includes(term) || category.includes(term);
-                        const matchesVisibility = showHidden || useFlag;
-                        return matchesSearch && matchesVisibility;
-                    });
-                    renderStockList(filtered);
+        const chips = document.querySelectorAll('.filter-chip');
+        chips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                chip.classList.toggle('active');
+                
+                if (chip.getAttribute('data-filter') === 'unchecked') {
+                    stocktakeSession.uncheckedOnly = chip.classList.contains('active');
                 }
+                
+                applyStockFilters();
             });
-        }
+        });
     }
 
     /**
