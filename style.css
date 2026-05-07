@@ -3477,22 +3477,25 @@ input:checked + .slider:before {
 }
 
 .alert-processing-badge.mfg {
-    background: rgba(16, 185, 129, 0.1);
-    color: #059669;
-    border: 1px solid rgba(16, 185, 129, 0.2);
+    background: rgba(16, 185, 129, 0.15);
+    color: #065f46;
+    border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .alert-processing-badge.pur {
-    background: rgba(59, 130, 246, 0.1);
-    color: #2563eb;
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: rgba(59, 130, 246, 0.15);
+    color: #1e40af;
+    border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
+/* 在庫切れ(critical)カード内でも文字が読めるように背景を調整 */
 .alert-card.critical .alert-processing-badge {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.9);
+    color: #ef4444; /* カードの赤色に合わせる */
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
 
 
 
