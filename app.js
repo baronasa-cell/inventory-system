@@ -3165,14 +3165,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             html += `
                 <div class="alert-card ${cardClass}">
                     <div class="alert-info">
-                        <div class="alert-title-row">
-                            <h4>${itemName}</h4>
-                            ${statusBadge}
-                        </div>
+                        <h4>${itemName}</h4>
                         <div class="alert-status-row">
                             <span class="alert-current-qty">現在: <b>${qty}</b></span>
                             <span class="alert-threshold">閾値: ${threshold}</span>
                             <span class="alert-category">${category}</span>
+                            ${statusBadge}
                         </div>
                     </div>
                     <div class="alert-actions">
