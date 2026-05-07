@@ -1019,6 +1019,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked && matchesInStock;
         });
 
+        // 優先度によるソート (提案10)
+        filtered.sort((a, b) => {
+            const prioA = parseInt(a['優先度']) || 3; // デフォルト3
+            const prioB = parseInt(b['優先度']) || 3;
+            
+            if (prioA !== prioB) {
+                return prioB - prioA; // 優先度が高い(5に近い)ものを上に
+            }
+            // 優先度が同じなら品名順
+            return (a['品名'] || "").localeCompare(b['品名'] || "", 'ja');
+        });
+
         renderStockList(filtered);
     }
 
