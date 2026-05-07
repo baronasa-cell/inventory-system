@@ -524,7 +524,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const items = new Set();
         data.forEach(item => {
             if (item['ステータス']) statuses.add(item['ステータス'].trim());
-            if (item['完成品名']) items.add(item['完成品名'].trim());
+            const itemName = item['完成品名'] || item['品名'];
+            if (itemName) items.add(itemName.trim());
         });
 
         statusSelect.innerHTML = '<option value="">すべて</option>';
@@ -2056,7 +2057,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderData = renderData.filter(item => (item['ステータス'] || '').trim() === statusFilter);
             }
             if (itemFilter) {
-                renderData = renderData.filter(item => (item['完成品名'] || '').trim() === itemFilter);
+                renderData = renderData.filter(item => {
+                    const name = (item['完成品名'] || item['品名'] || '').trim();
+                    return name === itemFilter;
+                });
             }
         }
 
