@@ -946,7 +946,7 @@ function updateInventorySummary() {
 
       const newRow = new Array(sumHeaders.length).fill("");
       newRow[0] = 9;    // A列: 優先度 (1〜9: 1が最優先)
-      newRow[1] = 999;  // B列: 表示順 (デフォルト999)
+      newRow[1] = (sumData.length * 10); // B列: 表示順 (行数ベースで10刻み)
       newRow[2] = name; // C列: 品名
       newRow[3] = cat;  // D列: カテゴリ
       newRow[4] = summary[name]; // E列: 現在庫数
