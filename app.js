@@ -3162,23 +3162,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isCritical = qty === 0;
             const cardClass = isCritical ? 'critical' : 'warning';
 
-            // 進行中の取引があるか確認 (提案20, 24)
-            // T_製造は「完成品名」または「品名」、T_仕入は「品名」または「商品名」をチェック
-            const mfgCount = activeMfg.filter(m => {
+            // 進行中の取引があるか確認 (件数ではなく合計数量を表示するように変更)
+            const mfgTotal = activeMfg.filter(m => {
                 const name = (m['完成品名'] || m['品名'] || m['商品名'] || '').toString().trim();
                 return name === itemName.trim();
-            }).length;
+            }).reduce((sum, m) => sum + (parseFloat(m['数量'] || m['製造数量']) || 0), 0);
             
-            const purCount = activePur.filter(p => {
+            const purTotal = activePur.filter(p => {
                 const name = (p['品名'] || p['商品名'] || p['完成品名'] || '').toString().trim();
                 return name === itemName.trim();
-            }).length;
+            }).reduce((sum, p) => sum + (parseFloat(p['数量']) || 0), 0);
             
             let statusBadge = '';
-            if (mfgCount > 0) {
-                statusBadge = `<span class="alert-processing-badge mfg"><ion-icon name="hammer-outline"></ion-icon>製造中(${mfgCount})</span>`;
-            } else if (purCount > 0) {
-                statusBadge = `<span class="alert-processing-badge pur"><ion-icon name="cart-outline"></ion-icon>仕入中(${purCount})</span>`;
+            if (mfgTotal > 0) {
+                statusBadge = `<span class="alert-processing-badge mfg"><ion-icon name="hammer-outline"></ion-icon>製造中(${mfgTotal})</span>`;
+            } else if (purTotal > 0) {
+                statusBadge = `<span class="alert-processing-badge pur"><ion-icon name="cart-outline"></ion-icon>仕入中(${purTotal})</span>`;
             }
 
             // M_商品からカテゴリ情報を取得
