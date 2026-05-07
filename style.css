@@ -339,6 +339,13 @@ input:checked + .slider:before {
     border: 1px solid rgba(79, 70, 229, 0.2);
 }
 
+.badge-planned {
+    background: #fff8e1;
+    color: #f57f17;
+    border: 1px solid #ffecb3;
+    font-weight: bold;
+}
+
 .badge-warning {
     background: rgba(230, 81, 0, 0.1);
     color: #e65100;

@@ -2114,6 +2114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ${(tab === 'sales' && item['送料負担区分'] == 1) ? '<span class="badge badge-warning">落札者負担</span>' : ''}
                     ${(tab === 'expense' && item['管理対象'] == 1) ? '<span class="badge badge-info"><ion-icon name="cube-outline"></ion-icon> 在庫対象</span>' : ''}
                     ${(tab === 'expense' && item['レシート'] == 1) ? '<span class="badge badge-secondary"><ion-icon name="receipt-outline"></ion-icon> レシート有</span>' : ''}
+                    ${item['ステータス'] === '購入予定' ? '<span class="badge badge-planned">購入予定</span>' : ''}
                     ${(tab === 'manufacturing' && !['完了', 'キャンセル'].includes(item['ステータス'])) ? '<span class="badge badge-info">パーツ引当済</span>' : ''}
                     ${(tab === 'manufacturing' && (item['備考'] || '').includes('追加部材:')) ? '<span class="badge badge-added">部材追加あり</span>' : ''}
                     ${(tab === 'sales' && (item['管理対象外'] == 1 || item['管理区分'] == 1)) ? '<span class="badge badge-personal">個人利用</span>' : ''}
@@ -2146,8 +2147,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     仕入日:${formatDate(item['仕入日'] || item['発注日'])} &nbsp;&nbsp; ${item['仕入先'] || ''}
                 </div>
                 <div class="history-inputs-grid">
+                    <div class="input-group mini"><label>仕入日</label><input type="date" class="date-input" data-header="仕入日" value="${formatISODate(item['仕入日'] || item['発注日'])}"></div>
                     <div class="input-group mini"><label>入庫日</label><input type="date" class="date-input" data-header="入庫日" value="${formatISODate(item['入庫日'])}"></div>
-                    <div class="input-group mini">${generateStatusSelect(id, '仕入', item['ステータス'])}</div>
+                    <div class="input-group mini" style="grid-column: span 2;">${generateStatusSelect(id, '仕入', item['ステータス'])}</div>
                 </div>
                 <div class="history-note" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); font-size: 0.85em; color: var(--text-muted);">
                     <textarea class="note-input" data-header="備考" rows="2" style="width:100%; background:rgba(0,0,0,0.05); border:1px solid rgba(0,0,0,0.1); border-radius:4px; padding:4px;">${item['備考'] || item['note'] || ''}</textarea>
@@ -2160,8 +2162,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     注文日:${formatDate(item['注文日'] || item['登録日'])} &nbsp;&nbsp; ${item['購入先'] || ''}
                 </div>
                 <div class="history-inputs-grid">
+                    <div class="input-group mini"><label>注文日</label><input type="date" class="date-input" data-header="注文日" value="${formatISODate(item['注文日'] || item['登録日'])}"></div>
                     <div class="input-group mini"><label>完了日</label><input type="date" class="date-input" data-header="完了日" value="${formatISODate(item['完了日'])}"></div>
-                    <div class="input-group mini">${generateStatusSelect(id, '経費', item['ステータス'])}</div>
+                    <div class="input-group mini" style="grid-column: span 2;">${generateStatusSelect(id, '経費', item['ステータス'])}</div>
                 </div>
                 <div class="history-inputs-grid" style="grid-template-columns: 1fr; margin-top: 5px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; color: var(--text-secondary); cursor: pointer;">
