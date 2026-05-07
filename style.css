@@ -3448,9 +3448,50 @@ input:checked + .slider:before {
     margin-top: 4px;
 }
 
-.action-select-btn:active {
-    transform: scale(0.97);
-    opacity: 0.9;
+
+/* Inventory Alert Processing Badge (Proposal 20/24) */
+.alert-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.alert-title-row h4 {
+    margin-bottom: 0;
+}
+
+.alert-processing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.alert-processing-badge ion-icon {
+    font-size: 13px;
+}
+
+.alert-processing-badge.mfg {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.alert-processing-badge.pur {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.alert-card.critical .alert-processing-badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 

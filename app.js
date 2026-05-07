@@ -3119,26 +3119,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="alert-cards-container">
         `;
 
+        const activeMfg = lastHistoryData.history['T_製造'] || [];
+        const activePur = lastHistoryData.history['T_仕入'] || [];
+
         alerts.forEach(item => {
+            const itemName = item['品名'];
             const qty = parseFloat(item['現在庫数']) || 0;
             const threshold = parseFloat(item['閾値']) || 0;
             const isCritical = qty === 0;
             const cardClass = isCritical ? 'critical' : 'warning';
 
-            // M_商品からカテゴリ情報を取得して「仕入」か「製造」かを推測
-            const product = (currentMasters['M_商品'] || []).find(m => m['品名'] === item['品名']);
+            // 進行中の取引があるか確認 (提案20, 24)
+            const mfgCount = activeMfg.filter(m => m['完成品名'] === itemName).length;
+            const purCount = activePur.filter(p => p['品名'] === itemName).length;
+            
+            let statusBadge = '';
+            if (mfgCount > 0) {
+                statusBadge = `<span class="alert-processing-badge mfg"><ion-icon name="hammer-outline"></ion-icon>製造中(${mfgCount})</span>`;
+            } else if (purCount > 0) {
+                statusBadge = `<span class="alert-processing-badge pur"><ion-icon name="cart-outline"></ion-icon>仕入中(${purCount})</span>`;
+            }
+
+            // M_商品からカテゴリ情報を取得
+            const product = (currentMasters['M_商品'] || []).find(m => m['品名'] === itemName);
             const category = product ? product['カテゴリ'] : "";
 
-            // カテゴリが「商品」または「パーツ2」なら製造、それ以外（パーツ等）は仕入としてボタンを表示
             const isMade = (category === '商品' || category === 'パーツ2');
             const actionBtn = isMade ?
-                `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${item['品名']}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>` :
-                `<button class="alert-btn purchase" onclick="jumpToTab('purchase', '${item['品名']}')"><ion-icon name="cart-outline"></ion-icon>仕入へ</button>`;
+                `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${itemName}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>` :
+                `<button class="alert-btn purchase" onclick="jumpToTab('purchase', '${itemName}')"><ion-icon name="cart-outline"></ion-icon>仕入へ</button>`;
 
             html += `
                 <div class="alert-card ${cardClass}">
                     <div class="alert-info">
-                        <h4>${item['品名']}</h4>
+                        <div class="alert-title-row">
+                            <h4>${itemName}</h4>
+                            ${statusBadge}
+                        </div>
                         <div class="alert-status-row">
                             <span class="alert-current-qty">現在: <b>${qty}</b></span>
                             <span class="alert-threshold">閾値: ${threshold}</span>
