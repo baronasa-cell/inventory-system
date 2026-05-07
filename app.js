@@ -333,7 +333,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
 
-                // 最近のアクション
+                // 最近のアクション（最新の活動日を基準にする）
+                // 全ての日付列をスキャンして最大値を探す
+                let latestActivityDate = d;
+                for (const key in r) {
+                    if (key.includes('日') && r[key]) {
+                        const tempD = new Date(r[key]);
+                        if (!isNaN(tempD.getTime()) && tempD > latestActivityDate) {
+                            latestActivityDate = tempD;
+                        }
+                    }
+                }
+
                 let amount = 0;
                 if (sheetName === 'T_仕入') amount = -price;
                 else if (sheetName === 'T_経費') amount = -price;
@@ -341,9 +352,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 recentAll.push({
                     type: sheetName === 'T_仕入' ? 'purchase' : (sheetName === 'T_経費' ? 'expense' : (sheetName === 'T_販売' ? 'sales' : 'manufacturing')),
-                    id: r[Object.keys(r)[0]], date: d, itemName: r['品名'],
+                    id: r[Object.keys(r)[0]], date: latestActivityDate, itemName: r['品名'],
                     amount: amount, status: status, quantity: r['数量'] || r['製造数量'],
-                    dateStr: formatDate(d),
+                    dateStr: formatDate(latestActivityDate),
                     buyer: sheetName === 'T_販売' ? r['売先'] : null
                 });
             });
