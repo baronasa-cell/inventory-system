@@ -338,6 +338,24 @@
                         <ion-icon name="list-outline"></ion-icon>
                         製造履歴・進捗管理
                     </h2>
+
+                    <!-- 製造履歴フィルター (提案28) -->
+                    <div class="history-filter-container glass-card shadow-none" style="padding: 12px; margin-bottom: 16px; background: rgba(255,255,255,0.4);">
+                        <div class="input-grid">
+                            <div class="input-group mini" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">ステータス</label>
+                                <select id="manufacturing-history-status-filter" style="padding: 6px 10px; font-size: 13px; height: 36px;" onchange="applyManufacturingHistoryFilter()">
+                                    <option value="">すべて</option>
+                                </select>
+                            </div>
+                            <div class="input-group mini" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">完成品名</label>
+                                <select id="manufacturing-history-item-filter" style="padding: 6px 10px; font-size: 13px; height: 36px;" onchange="applyManufacturingHistoryFilter()">
+                                    <option value="">すべて</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                     
                     <div id="manufacturing-history-list">
                         <div class="empty-history" style="padding: 40px; text-align: center; color: var(--text-muted);">

@@ -450,8 +450,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sCompleted = document.getElementById('sales-completed-count');
         if (sCompleted) sCompleted.textContent = (summary.completedSalesCount || 0);
 
-        // 販売履歴の絞り込み用オプションを更新
+        // 販売・製造履歴の絞り込み用オプションを更新
         updateSalesFilterOptions(history['T_販売']);
+        updateManufacturingFilterOptions(history['T_製造']);
 
         renderHistoryCards('purchase', history['T_仕入']);
         renderHistoryCards('expense', history['T_経費']);
@@ -507,6 +508,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (buyers.has(currentBuyer)) buyerSelect.value = currentBuyer;
     }
     
+    /**
+     * 製造履歴のフィルターオプションを更新する
+     */
+    function updateManufacturingFilterOptions(data) {
+        if (!data) return;
+        const statusSelect = document.getElementById('manufacturing-history-status-filter');
+        const itemSelect = document.getElementById('manufacturing-history-item-filter');
+        if (!statusSelect || !itemSelect) return;
+
+        const currentStatus = statusSelect.value;
+        const currentItem = itemSelect.value;
+
+        const statuses = new Set();
+        const items = new Set();
+        data.forEach(item => {
+            if (item['ステータス']) statuses.add(item['ステータス'].trim());
+            if (item['完成品名']) items.add(item['完成品名'].trim());
+        });
+
+        statusSelect.innerHTML = '<option value="">すべて</option>';
+        [...statuses].sort().forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            statusSelect.appendChild(opt);
+        });
+
+        itemSelect.innerHTML = '<option value="">すべて</option>';
+        [...items].sort().forEach(i => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = i;
+            itemSelect.appendChild(opt);
+        });
+
+        if (statuses.has(currentStatus)) statusSelect.value = currentStatus;
+        if (items.has(currentItem)) itemSelect.value = currentItem;
+    }
+
+    /**
+     * 製造履歴にフィルターを適用
+     */
+    window.applyManufacturingHistoryFilter = function() {
+        if (!lastHistoryData || !lastHistoryData.history) return;
+        renderHistoryCards('manufacturing', lastHistoryData.history['T_製造']);
+    };
+
     window.applySalesHistoryFilter = function() {
         if (!lastHistoryData || !lastHistoryData.history) return;
         renderHistoryCards('sales', lastHistoryData.history['T_販売']);
@@ -1999,6 +2047,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (buyerFilter) {
                 renderData = renderData.filter(item => (item['売先'] || '').trim() === buyerFilter);
+            }
+        } else if (tab === 'manufacturing') {
+            const statusFilter = document.getElementById('manufacturing-history-status-filter')?.value;
+            const itemFilter = document.getElementById('manufacturing-history-item-filter')?.value;
+            
+            if (statusFilter) {
+                renderData = renderData.filter(item => (item['ステータス'] || '').trim() === statusFilter);
+            }
+            if (itemFilter) {
+                renderData = renderData.filter(item => (item['完成品名'] || '').trim() === itemFilter);
             }
         }
 
