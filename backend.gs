@@ -923,16 +923,16 @@ function updateInventorySummary() {
 
   // 既存行の更新 (ピンポイント更新)
   for (let i = 1; i < sumData.length; i++) {
-    const name = sumData[i][1]; // A列(0)が優先度、B列(1)が品名
+    const name = sumData[i][2]; // A:優先度, B:表示順, C:品名(2)
     if (!name) continue;
     existingNames.add(name);
     
     if (summary[name] !== undefined) {
-      const currentQty = parseFloat(sumData[i][3]) || 0; // C→D列(3)
+      const currentQty = parseFloat(sumData[i][4]) || 0; // E列(4)
       const newQty = summary[name];
       if (currentQty !== newQty) {
-        sumSheet.getRange(i + 1, 4).setValue(newQty); // C→D列(4)
-        sumSheet.getRange(i + 1, 6).setValue(new Date()); // E→F列(6)
+        sumSheet.getRange(i + 1, 5).setValue(newQty); // E列(5)
+        sumSheet.getRange(i + 1, 7).setValue(new Date()); // G列(7)
       }
     }
   }
@@ -946,13 +946,14 @@ function updateInventorySummary() {
 
       const newRow = new Array(sumHeaders.length).fill("");
       newRow[0] = 3;    // A列: 優先度 (デフォルト3)
-      newRow[1] = name; // B列: 品名
-      newRow[2] = cat;  // C列: カテゴリ
-      newRow[3] = summary[name]; // D列: 現在庫数
-      newRow[4] = 10;   // E列: 閾値
-      newRow[5] = new Date(); // F列: 最終更新日
-      newRow[6] = useFlag;    // G列: 使用FLG
-      newRow[7] = "";   // H列: 最終棚卸日
+      newRow[1] = 999;  // B列: 表示順 (デフォルト999)
+      newRow[2] = name; // C列: 品名
+      newRow[3] = cat;  // D列: カテゴリ
+      newRow[4] = summary[name]; // E列: 現在庫数
+      newRow[5] = 10;   // F列: 閾値
+      newRow[6] = new Date(); // G列: 最終更新日
+      newRow[7] = useFlag;    // H列: 使用FLG
+      newRow[8] = "";   // I列: 最終棚卸日
 
       sumSheet.appendRow(newRow);
     }
@@ -1287,9 +1288,9 @@ function updateStockThreshold(itemName, newThreshold) {
   const sheet = SS.getSheetByName('T_在庫集計');
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][1] === itemName) { // B列が品名
-      sheet.getRange(i + 1, 5).setValue(newThreshold); // D→E列(5)
-      sheet.getRange(i + 1, 6).setValue(new Date());   // E→F列(6)
+    if (data[i][2] === itemName) { // C列が品名
+      sheet.getRange(i + 1, 6).setValue(newThreshold); // F列(6)
+      sheet.getRange(i + 1, 7).setValue(new Date());   // G列(7)
       return { status: 'success' };
     }
   }
@@ -1300,9 +1301,9 @@ function updateStockItemStatus(itemName, newStatus) {
   const sheet = SS.getSheetByName('T_在庫集計');
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][1] === itemName) { // B列が品名
-      sheet.getRange(i + 1, 7).setValue(newStatus); // F→G列(7)
-      sheet.getRange(i + 1, 6).setValue(new Date()); // E→F列(6)
+    if (data[i][2] === itemName) { // C列が品名
+      sheet.getRange(i + 1, 8).setValue(newStatus); // H列(8)
+      sheet.getRange(i + 1, 7).setValue(new Date()); // G列(7)
       return { status: 'success' };
     }
   }
@@ -1319,7 +1320,7 @@ function updateStockBulk(thresholdUpdates, statusUpdates) {
     // アイテム名を行インデックスのマップに変換
     const itemMap = {};
     for (let i = 1; i < data.length; i++) {
-      if (data[i][1]) itemMap[data[i][1]] = i + 1; // B列
+      if (data[i][2]) itemMap[data[i][2]] = i + 1; // C列
     }
     
     // 閾値の更新
@@ -1327,8 +1328,8 @@ function updateStockBulk(thresholdUpdates, statusUpdates) {
       for (const itemName in thresholdUpdates) {
         const rowIdx = itemMap[itemName];
         if (rowIdx) {
-          sheet.getRange(rowIdx, 5).setValue(thresholdUpdates[itemName]); // D→E(5)
-          sheet.getRange(rowIdx, 6).setValue(now); // E→F(6)
+          sheet.getRange(rowIdx, 6).setValue(thresholdUpdates[itemName]); // F列(6)
+          sheet.getRange(rowIdx, 7).setValue(now); // G列(7)
         }
       }
     }
@@ -1345,8 +1346,8 @@ function updateStockBulk(thresholdUpdates, statusUpdates) {
         const rowIdx = itemMap[itemName];
         const newStatus = statusUpdates[itemName];
         if (rowIdx) {
-          sheet.getRange(rowIdx, 7).setValue(newStatus); // F→G(7)
-          sheet.getRange(rowIdx, 6).setValue(now); // E→F(6)
+          sheet.getRange(rowIdx, 8).setValue(newStatus); // H列(8)
+          sheet.getRange(rowIdx, 7).setValue(now); // G列(7)
         }
 
         // M_商品側も同期
@@ -1621,14 +1622,14 @@ function registerStocktake(stocktakeData, note) {
   const summaryData = summarySheet.getDataRange().getValues();
   const summaryItemMap = {};
   for (let i = 1; i < summaryData.length; i++) {
-    if (summaryData[i][1]) summaryItemMap[summaryData[i][1]] = i + 1; // B列
+    if (summaryData[i][2]) summaryItemMap[summaryData[i][2]] = i + 1; // C列
   }
 
   stocktakeData.forEach(adj => {
-    // 差異の有無に関わらず、最終棚卸日を更新 (G→H列: インデックス8)
+    // 差異の有無に関わらず、最終棚卸日を更新 (I列: インデックス9)
     const rowIdx = summaryItemMap[adj.itemName];
     if (rowIdx) {
-      summarySheet.getRange(rowIdx, 8).setValue(timestamp);
+      summarySheet.getRange(rowIdx, 9).setValue(timestamp);
     }
 
     if (adj.diffQty === 0) return; // 差異がないものは在庫管理レコードの追加をスキップ
@@ -1834,7 +1835,7 @@ function updateMasterRecord(masterName, id, updates) {
           updateStockItemStatus(itemName, newStatus);
         }
       } else if (masterName === 'T_在庫集計') {
-        const itemName = data[rowIndex][1]; // T_在庫集計の品名はB列(1)
+        const itemName = data[rowIndex][2]; // T_在庫集計の品名はC列(2)
         const pSheet = SS.getSheetByName('M_商品');
         if (pSheet) {
           const pData = pSheet.getDataRange().getValues();
