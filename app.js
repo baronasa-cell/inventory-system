@@ -1,5 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log("System initialization started...");
+    console.log("System initialization started... (v2.2-QR-LayoutFixed)");
+    
+    // 起動確認用のトーストを表示（デバッグ用：後で消せます）
+    if (typeof showToast === 'function') showToast('システムを起動しています...', 'success');
 
     // ---- API Configuration ----
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzexidaVzlRQ1_StDZo6Oo_oOt9TtX33Nk2sPwbo-oDzuRW6_Tbt2_zQxlxv-Ctr4jZuA/exec';
@@ -15,23 +18,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let isStocktakeMode = false;
     let stocktakeData = {}; // { itemName: { actual: number, diff: number } }
+    const STOCKTAKE_CYCLE_DAYS = 30; // サイクルカウントの基準日数
 
     let pendingStockChanges = {
         thresholds: {}, // itemName -> newValue
         statuses: {}    // itemName -> newValue (0 or 1)
     };
 
+    let html5QrCode = null; // Scanner instance
+
     // マスタ編集用スキーマ定義 (提案7・マスター管理強化)
     const MASTER_SCHEMAS = {
         'M_商品': {
             key: '品名',
             fields: [
+                { name: '商品ID', type: 'text', visible: true, editable: false }, // 自動採番
                 { name: '表示順', type: 'number', visible: true, editable: true },
                 { name: '品名', type: 'text', visible: true, editable: false }, // 編集時はReadOnly
                 { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', '単体商品', '商品', '経費', '製造'] },
                 { name: '説明', type: 'textarea', visible: true, editable: true },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true },
-                { name: '画像URL', visible: false }
+                { name: '画像URL', visible: false },
+                { name: '保管場所', type: 'text', visible: true, editable: true },
+                { name: 'QR/バーコード', type: 'text', visible: true, editable: true } // I列
             ]
         },
         'M_仕入先': {
@@ -83,13 +92,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         'T_在庫集計': {
             key: '品名',
             fields: [
+                { name: '優先度', type: 'number', visible: true, editable: true },
+                { name: '表示順', type: 'number', visible: true, editable: true },
                 { name: '品名', type: 'text', visible: true, editable: false },
                 { name: 'カテゴリ', type: 'text', visible: true, editable: false },
                 { name: '現在庫数', type: 'number', visible: true, editable: false },
                 { name: '閾値', type: 'number', visible: true, editable: true },
-                { name: '更新日', visible: false },
+                { name: '最終更新日', visible: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true },
-                { name: '最終棚卸日', type: 'text', visible: true, editable: false }
+                { name: '最終棚卸日', type: 'text', visible: true, editable: false },
+                { name: '商品ID', type: 'text', visible: true, editable: false }, 
+                { name: '保管場所', type: 'text', visible: true, editable: false },
+                { name: 'QR/バーコード', type: 'text', visible: true, editable: false }
             ]
         },
         'M_支払': {
@@ -126,11 +140,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupImagePreviewListeners();
         setupStockUpdateListeners();
         setupStockFilters();
+        setupScannerListeners();
 
         console.log("System initialization completed successfully.");
     } catch (error) {
         console.error("Critical System Error:", error);
-        alert("システムの起動中にエラーが発生しました: " + error.message);
+        alert("システムの起動中に致命的なエラーが発生しました。ブラウザのコンソール（F12）で詳細を確認してください。\n\nエラー内容: " + error.message);
+        // エラーが起きてもナビゲーションだけは動くように試みる
+        setupNavigation();
     }
 
     //* --- 利益・進捗バッジ --- */
@@ -154,6 +171,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     masters[key] = records;
                 }
                 currentMasters = Object.assign({}, currentMasters, masters);
+
+                // 在庫集計のデータ拡張 (商品ID, 保管場所の紐付け)
+                if (currentMasters['T_在庫集計'] && currentMasters['M_商品']) {
+                    const itemMap = {};
+                    currentMasters['M_商品'].forEach(m => itemMap[m['品名']] = m);
+                    currentMasters['T_在庫集計'].forEach(r => {
+                        const m = itemMap[r['品名']];
+                        if (m) {
+                            r['商品ID'] = m['商品ID'] || '';
+                            r['保管場所'] = m['保管場所'] || '';
+                            r['QR/バーコード'] = m['QR/バーコード'] || '';
+                        }
+                    });
+                }
+
                 saveMastersToCache(currentMasters);
                 buildDynamicUI(currentMasters);
 
@@ -183,12 +215,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 attachHistoryListeners();
+                return response.data;
             } else {
-                throw new Error(response.message || "Unknown API error");
+                throw new Error(response.message || "API側からエラーが返されました");
             }
         } catch (e) {
             console.error("Failed to init system:", e);
-            if (scope === 'essential') alert("システムデータの読み込みに失敗しました。\n詳細: " + e.message);
+            alert("データの取得中にエラーが発生しました。\nスコープ: " + scope + "\n詳細: " + e.message);
+            throw e; // 上位のcatchに渡す
         }
     }
 
@@ -1005,12 +1039,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const filtered = allStockProducts.filter(p => {
             const name = (p['品名'] || "").toLowerCase();
             const category = (p['カテゴリ'] || "").toLowerCase();
+            const id = (p['商品ID'] || "").toLowerCase();
+            const barcode = (p['QR/バーコード'] || "").toLowerCase();
+            const location = (p['保管場所'] || "").toLowerCase();
             const useFlag = parseInt(p['使用FLG']) !== 0;
             const threshold = parseFloat(p['閾値']) || 0;
             const stock = parseFloat(p['現在庫数']) || 0;
             const isUnchecked = !p['最終棚卸日'];
 
-            const matchesSearch = name.includes(term) || category.includes(term);
+            const matchesSearch = name.includes(term) || category.includes(term) || id.includes(term) || barcode.includes(term) || location.includes(term);
             const matchesVisibility = showHidden || useFlag;
             const matchesThreshold = !thresholdZeroOnly || threshold === 0;
             const matchesUnchecked = !uncheckedOnly || isUnchecked;
@@ -1503,39 +1540,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         container.innerHTML = '';
         let safeData = stockData || [];
 
-        // フィルタ適用：未確認のみ（今月すでに棚卸済み、または現在のセッションで確認済みのものを除外）
+        // フィルタ適用：未確認のみ（サイクルカウント基準）
         if (stocktakeSession.uncheckedOnly) {
             const now = new Date();
-            const curMonth = now.getMonth();
-            const curYear = now.getFullYear();
+            const cycleDays = 30; // 30日を基準とする
 
             safeData = safeData.filter(row => {
                 const lastDateVal = row['最終棚卸日'];
-                let isDoneThisMonth = false;
+                let isRecent = false;
                 if (lastDateVal) {
                     const d = new Date(lastDateVal);
-                    isDoneThisMonth = (d.getMonth() === curMonth && d.getFullYear() === curYear);
+                    const diffTime = Math.abs(now - d);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    isRecent = diffDays <= cycleDays;
                 }
                 const isVerifiedInSession = stocktakeSession.verifiedItems.has(row['品名']);
-                return !isDoneThisMonth && !isVerifiedInSession;
+                return !isRecent && !isVerifiedInSession;
             });
         }
 
         if (badge) badge.textContent = safeData.length + '点';
 
         if (safeData.length === 0) {
-            const msg = isStocktakeMode ? (stocktakeSession.uncheckedOnly ? '今月の未確認品目はありません' : '対象品目なし') : (currentMasters['T_在庫集計'] ? '表示できる在庫はありません' : '在庫データを取得できませんでした。');
+            const msg = isStocktakeMode ? (stocktakeSession.uncheckedOnly ? 'サイクル期間内の未確認品目はありません' : '対象品目なし') : (currentMasters['T_在庫集計'] ? '表示できる在庫はありません' : '在庫データを取得できませんでした。');
             container.innerHTML = `<div style="text-align:center; padding: 40px; color: var(--text-secondary);">${msg}</div>`;
             return;
         }
 
         const now = new Date();
-        const curMonth = now.getMonth();
-        const curYear = now.getFullYear();
 
         safeData.forEach(row => {
             const itemName = row['品名'];
-            const category = row['カテゴリ'] || row['商品区分'] || ''; // カテゴリ情報を取得
+            const category = row['カテゴリ'] || row['商品区分'] || ''; 
             const rawQty = parseFloat(row['現在庫数']);
             const stockQty = isNaN(rawQty) ? 0 : rawQty;
 
@@ -1544,9 +1580,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const useFlag = parseInt(row['使用FLG']) !== 0;
 
             const lastStocktakeDate = row['最終棚卸日'] ? new Date(row['最終棚卸日']) : null;
-            const isDoneThisMonth = lastStocktakeDate &&
-                (lastStocktakeDate.getMonth() === curMonth && lastStocktakeDate.getFullYear() === curYear);
-            const isVerified = isDoneThisMonth || stocktakeSession.verifiedItems.has(itemName);
+            const isRecent = lastStocktakeDate && (Math.abs(now - lastStocktakeDate) / (1000*60*60*24) <= 30);
+            const isVerified = isRecent || stocktakeSession.verifiedItems.has(itemName);
 
             const card = document.createElement('div');
             card.className = 'stock-item-card';
@@ -1555,6 +1590,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === itemName);
             const imageUrl = itemInMaster ? itemInMaster['画像URL'] : null;
+            const itemID = row['商品ID'] || '';
+            const location = row['保管場所'] || '';
+            const barcode = row['QR/バーコード'] || '';
+
+            card.setAttribute('data-item-name', itemName);
+            card.setAttribute('data-item-id', itemID);
+            card.setAttribute('data-barcode', barcode);
+            card.setAttribute('data-location', location);
 
             if (isStocktakeMode) {
                 // ---- 棚卸モードのカード ----
@@ -1573,8 +1616,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="card-main-info">
                             <div class="card-product-name">${itemName}</div>
                             <div class="card-sub-info">
+                                ${itemID ? `<span class="id-badge">${itemID}</span>` : ''}
+                                ${barcode ? `<span class="barcode-badge"><ion-icon name="barcode-outline"></ion-icon>${barcode}</span>` : ''}
+                                ${location ? `<span class="location-badge"><ion-icon name="location-outline"></ion-icon>${location}</span>` : ''}
                                 ${lastStocktakeDate ? `前回: ${lastStocktakeDate.toLocaleDateString()} ` : ''}
-                                ${isDoneThisMonth ? `<span class="stocktake-done-badge"><ion-icon name="checkmark"></ion-icon>完了</span>` : ''}
+                                ${isRecent ? `<span class="stocktake-done-badge"><ion-icon name="checkmark"></ion-icon>完了</span>` : ''}
                             </div>
                         </div>
                         <button class="verify-btn ${isVerified ? 'verified' : ''}" title="${isVerified ? '未確認に戻す' : '確認済みにする'}">
@@ -1621,17 +1667,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 verifyBtn.addEventListener('click', () => {
                     const currentlyVerified = stocktakeSession.verifiedItems.has(itemName);
-
                     if (currentlyVerified) {
                         stocktakeSession.verifiedItems.delete(itemName);
                         verifyBtn.classList.remove('verified');
                         card.classList.remove('verified-row');
                         verifyBtn.querySelector('ion-icon').setAttribute('name', 'checkmark');
-
                         const input = stepper.querySelector('input');
                         input.value = stockQty;
                         delete stocktakeData[itemName];
-
                         const diffBadge = card.querySelector('.diff-badge');
                         diffBadge.textContent = '0';
                         diffBadge.className = 'diff-badge diff-zero';
@@ -1640,7 +1683,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         verifyBtn.classList.add('verified');
                         card.classList.add('verified-row');
                         verifyBtn.querySelector('ion-icon').setAttribute('name', 'checkmark-done');
-
                         if (!stocktakeData[itemName]) {
                             stocktakeData[itemName] = { actual: stockQty, diff: 0 };
                         }
@@ -1651,7 +1693,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 // ---- 通常モードのカード ----
                 const isDanger = stockQty < threshold;
-
                 const pendingThreshold = pendingStockChanges.thresholds[itemName];
                 const displayThreshold = (pendingThreshold !== undefined) ? pendingThreshold : threshold;
                 const pendingStatus = pendingStockChanges.statuses[itemName];
@@ -1668,6 +1709,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="card-main-info">
                             <div class="card-product-name clickable" onclick="navigateToTransactionForm('${itemName}', '${category}')">${itemName}</div>
+                            <div class="card-sub-info">
+                                ${itemID ? `<span class="id-badge">${itemID}</span>` : ''}
+                                ${barcode ? `<span class="barcode-badge">${barcode}</span>` : ''}
+                                ${location ? `<span class="location-badge"><ion-icon name="location-outline"></ion-icon>${location}</span>` : ''}
+                            </div>
                         </div>
                         <div class="status-icon-wrap">
                             <ion-icon name="${isDanger ? 'alert-circle' : 'checkmark-circle'}" 
@@ -1713,7 +1759,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } else {
                         delete pendingStockChanges.thresholds[itemName];
                     }
-
                     const danger = stockQty < (isNaN(newThreshold) ? threshold : newThreshold);
                     statusIconWrap.innerHTML = `
                         <ion-icon name="${danger ? 'alert-circle' : 'checkmark-circle'}" 
@@ -1721,7 +1766,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                    title="${danger ? '在庫不足' : '在庫あり'}"></ion-icon>
                     `;
                     stockValCell.style.color = danger ? '#ef4444' : 'var(--accent-green)';
-
                     updateStockUpdateBar();
                     const isDirty = pendingStockChanges.thresholds[itemName] !== undefined || pendingStockChanges.statuses[itemName] !== undefined;
                     card.classList.toggle('is-dirty-row', isDirty);
@@ -1734,7 +1778,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const original = threshold;
                         stepper.querySelector('input').value = original;
                         delete pendingStockChanges.thresholds[itemName];
-
                         const danger = stockQty < original;
                         statusIconWrap.innerHTML = `
                             <ion-icon name="${danger ? 'alert-circle' : 'checkmark-circle'}" 
@@ -1742,11 +1785,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                                        title="${danger ? '在庫不足' : '在庫あり'}"></ion-icon>
                         `;
                         stockValCell.style.color = danger ? '#ef4444' : 'var(--accent-green)';
-
                         const isDirty = pendingStockChanges.statuses[itemName] !== undefined;
                         card.classList.toggle('is-dirty-row', isDirty);
                         saveBtn.classList.toggle('is-dirty', false);
-
                         updateStockUpdateBar();
                     }
                 });
@@ -1754,33 +1795,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 archiveBtn.addEventListener('click', () => {
                     const currentStatus = (pendingStockChanges.statuses[itemName] !== undefined) ? pendingStockChanges.statuses[itemName] : (useFlag ? 1 : 0);
                     const newStatus = currentStatus === 1 ? 0 : 1;
-
                     if (newStatus === (useFlag ? 1 : 0)) {
                         delete pendingStockChanges.statuses[itemName];
                     } else {
                         pendingStockChanges.statuses[itemName] = newStatus;
                     }
-
                     const isNowActive = newStatus === 1;
                     archiveBtn.querySelector('ion-icon').setAttribute('name', isNowActive ? 'archive-outline' : 'refresh-outline');
                     archiveBtn.title = isNowActive ? '廃盤にする' : '復活させる';
-
                     const isDirty = pendingStockChanges.thresholds[itemName] !== undefined || pendingStockChanges.statuses[itemName] !== undefined;
                     card.classList.toggle('is-dirty-row', isDirty);
                     archiveBtn.classList.toggle('is-dirty', pendingStockChanges.statuses[itemName] !== undefined);
-
                     updateStockUpdateBar();
                 });
             }
-
             container.appendChild(card);
         });
     }
+
 
     /**
      * ▲▼ボタン付きのステッパーUIを作成する
      */
     function createStepper(initialValue, onChange) {
+        // ... (existing createStepper implementation)
         const container = document.createElement('div');
         container.className = 'stepper-container';
 
@@ -1841,6 +1879,95 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const submitBtn = document.getElementById('stocktake-submit');
         if (submitBtn) submitBtn.disabled = (verifiedCount === 0);
+    }
+
+    /**
+     * ---- スキャン機能のロジック ----
+     */
+    function setupScannerListeners() {
+        const topScanBtn = document.getElementById('stock-scan-btn-top');
+        const bottomScanBtn = document.getElementById('stocktake-scan-btn');
+        const closeBtn = document.getElementById('scanner-close-btn');
+
+        if (topScanBtn) topScanBtn.addEventListener('click', () => startScanner());
+        if (bottomScanBtn) bottomScanBtn.addEventListener('click', () => startScanner());
+        if (closeBtn) closeBtn.addEventListener('click', () => stopScanner());
+    }
+
+    function startScanner() {
+        const overlay = document.getElementById('scanner-overlay');
+        overlay.style.display = 'flex';
+
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("reader");
+        }
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .catch(err => {
+                console.error("Scanner start error:", err);
+                alert("カメラの起動に失敗しました。カメラの使用を許可してください。");
+                overlay.style.display = 'none';
+            });
+    }
+
+    function stopScanner() {
+        const overlay = document.getElementById('scanner-overlay');
+        overlay.style.display = 'none';
+
+        if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().catch(err => console.error("Scanner stop error:", err));
+        }
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+        console.log(`Scan Result: ${decodedText}`);
+        stopScanner();
+
+        // 1. 場所QRコードの判定 (LOC-XXXX)
+        if (decodedText.startsWith('LOC-')) {
+            const loc = decodedText.replace('LOC-', '');
+            const searchInput = document.getElementById('stock-search-input');
+            if (searchInput) {
+                searchInput.value = loc;
+                searchInput.dispatchEvent(new Event('input')); // 検索実行
+            }
+            return;
+        }
+
+        // 2. 商品ID、品名、またはバーコードでの照合
+        const cards = Array.from(document.querySelectorAll('.stock-item-card'));
+        const matches = cards.filter(card => {
+            const id = card.getAttribute('data-item-id');
+            const name = card.getAttribute('data-item-name');
+            const bc = card.getAttribute('data-barcode');
+            return id === decodedText || bc === decodedText || name === decodedText;
+        });
+
+        if (matches.length === 1) {
+            // 一意に決まる場合：スクロール、ハイライト、入力フォーカス
+            const targetCard = matches[0];
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetCard.classList.add('scan-highlight');
+            setTimeout(() => targetCard.classList.remove('scan-highlight'), 1500);
+
+            const input = targetCard.querySelector('.stepper-input');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        } else if (matches.length > 1) {
+            // 重複する場合（同一JANコードなど）：一覧をその値で絞り込む
+            showToast(`${matches.length}件の商品がヒットしました。絞り込み表示します。`);
+            const searchInput = document.getElementById('stock-search-input');
+            if (searchInput) {
+                searchInput.value = decodedText;
+                searchInput.dispatchEvent(new Event('input')); // 検索実行
+            }
+        } else {
+            alert(`スキャン結果: "${decodedText}" に一致する商品は見つかりませんでした。`);
+        }
     }
 
     function setupStockUpdateListeners() {
@@ -1977,17 +2104,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // ヤマト運輸判定
         if (m.includes('らくらく') || m.includes('宅急便') || m.includes('ヤマト') || m.includes('クロネコ')) {
-            return `https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init&number1=${cleanNumber}`;
+            return 'https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init&number1=' + cleanNumber;
         }
 
         // 日本郵便判定
         if (m.includes('ゆうゆう') || m.includes('ゆうパケット') || m.includes('郵便') || m.includes('レターパック') || m.includes('定形') || m.includes('クリックポスト') || m.includes('特定記録')) {
-            return `https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S004&locale=ja&reqCodeNo1=${cleanNumber}`;
+            return 'https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S004&locale=ja&reqCodeNo1=' + cleanNumber;
         }
 
         // 判別できない場合は、一般的な桁数から推測（12桁はヤマト・郵便どちらもあり得るが、一旦ヤマトへ）
         if (cleanNumber.length === 12) {
-            return `https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init&number1=${cleanNumber}`;
+            return 'https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init&number1=' + cleanNumber;
         }
 
         return null;

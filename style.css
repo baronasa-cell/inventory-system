@@ -415,7 +415,7 @@ input:checked + .slider:before {
 }
 
 .auto-process-info li::before {
-    content: "・";
+    content: "繝ｻ";
     color: var(--accent-green);
     position: absolute;
     left: -12px;
@@ -440,7 +440,7 @@ input:checked + .slider:before {
 .process-dates-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 4px; /* 最小の隙間に調整 */
+    gap: 4px; /* 譛蟆上�髫咎俣縺ｫ隱ｿ謨ｴ */
 }
 
 
@@ -507,14 +507,14 @@ input:checked + .slider:before {
 .date-input-mini input,
 .date-input-mini select {
     width: 100%;
-    min-width: 0; /* 幅不足時に縮小を許可 */
-    font-size: 10px; /* 11pxから10pxに下げて横幅を確保 */
-    padding: 6px 1px; /* 左右パディングをほぼゼロにして内容を収める */
+    min-width: 0; /* 蟷�ｸ崎ｶｳ譎ゅ↓邵ｮ蟆上ｒ險ｱ蜿ｯ */
+    font-size: 10px; /* 11px縺九ｉ10px縺ｫ荳九￡縺ｦ讓ｪ蟷�ｒ遒ｺ菫� */
+    padding: 6px 1px; /* 蟾ｦ蜿ｳ繝代ョ繧｣繝ｳ繧ｰ繧偵⊇縺ｼ繧ｼ繝ｭ縺ｫ縺励※蜀�ｮｹ繧貞庶繧√ｋ */
     border-radius: 6px;
     border: 1px solid rgba(0,0,0,0.15);
     background: #fff;
     height: 32px;
-    /* モバイルブラウザ特有のスタイルリセット */
+    /* 繝｢繝舌う繝ｫ繝悶Λ繧ｦ繧ｶ迚ｹ譛峨�繧ｹ繧ｿ繧､繝ｫ繝ｪ繧ｻ繝�ヨ */
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
@@ -733,7 +733,7 @@ input:checked + .slider:before {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 6px; /* 8pxから6pxに微調整してボタンを収めやすくする */
+    gap: 6px; /* 8px縺九ｉ6px縺ｫ蠕ｮ隱ｿ謨ｴ縺励※繝懊ち繝ｳ繧貞庶繧√ｄ縺吶￥縺吶ｋ */
 }
 
 .status-icon {
@@ -1250,7 +1250,7 @@ input:checked + .slider:before {
 .bar.income { background: linear-gradient(to top, var(--accent-green), #4ade80); }
 .bar.expense { background: linear-gradient(to top, #ef4444, #f87171); }
 
-/* 積層バースタイル */
+/* 遨榊ｱ､繝舌�繧ｹ繧ｿ繧､繝ｫ */
 .bar-stack {
     width: 14px;
     border-radius: 4px 4px 0 0;
@@ -1260,7 +1260,7 @@ input:checked + .slider:before {
     width: 100%;
 }
 .bar-segment.income { background: var(--accent-green); }
-.bar-segment.personal { background: #94ead3; } /* 薄い青緑 */
+.bar-segment.personal { background: #94ead3; } /* 阮�＞髱堤ｷ� */
 
 .dot.personal { background: #94ead3; }
 
@@ -1462,7 +1462,7 @@ input:checked + .slider:before {
     align-items: center;
     gap: 12px;
     margin-bottom: 20px;
-    flex-wrap: wrap; /* スマホで折り返せるように追加 */
+    flex-wrap: wrap; /* 繧ｹ繝槭�縺ｧ謚倥ｊ霑斐○繧九ｈ縺�↓霑ｽ蜉� */
 }
 
 /* Clear button in search bar */
@@ -1746,8 +1746,8 @@ input:checked + .slider:before {
 
 
 .product-thumb-container {
-    width: 54px; /* 36pxから拡大 */
-    height: 54px; /* 36pxから拡大 */
+    width: 54px; /* 36px縺九ｉ諡｡螟ｧ */
+    height: 54px; /* 36px縺九ｉ諡｡螟ｧ */
     border-radius: 8px;
     background: #e5e7eb;
     margin-right: 12px;
@@ -1767,7 +1767,7 @@ input:checked + .slider:before {
 }
 
 .product-thumb-container ion-icon {
-    font-size: 28px; /* 20pxから拡大 */
+    font-size: 28px; /* 20px縺九ｉ諡｡螟ｧ */
     color: var(--text-muted);
 }
 
@@ -1850,7 +1850,7 @@ input:checked + .slider:before {
     display: none;
 }
 
-/* --- 利益・進捗バッジ --- */
+/* --- 蛻ｩ逶翫�騾ｲ謐励ヰ繝�ず --- */
 .growth-container {
     display: flex;
     flex-wrap: wrap;
@@ -1893,7 +1893,7 @@ input:checked + .slider:before {
     min-height: 120px;
 }
 
-/* [文字化けコメントを削除しました] */
+/* [譁�ｭ怜喧縺代さ繝｡繝ｳ繝医ｒ蜑企勁縺励∪縺励◆] */
 .unified-ledger-filter {
     background: rgba(255, 255, 255, 0.03);
     padding: 12px;
@@ -1923,7 +1923,7 @@ input:checked + .slider:before {
     font-weight: 600;
 }
 
-/* 郢ｧ�ｻ郢ｧ�ｰ郢晢ｽ｡郢晢ｽｳ郢晏現縺慕ｹ晢ｽｳ郢晏現ﾎ溽ｹ晢ｽｼ郢晢ｽｫ�ｽ蛹ｻ�ｽ郢ｧ�ｿ郢晢ｽｳ驗抵ｽ､�ｽ�ｽ */
+/* 驛｢�ｧ�ｽ�ｻ驛｢�ｧ�ｽ�ｰ驛｢譎｢�ｽ�｡驛｢譎｢�ｽ�ｳ驛｢譎冗樟邵ｺ諷包ｽｹ譎｢�ｽ�ｳ驛｢譎冗樟�取ｺｽ�ｹ譎｢�ｽ�ｼ驛｢譎｢�ｽ�ｫ�ｽ�ｽ陋ｹ�ｻ�ｽ�ｽ驛｢�ｧ�ｽ�ｿ驛｢譎｢�ｽ�ｳ鬩玲慣�ｽ�､�ｽ�ｽ�ｽ�ｽ */
 .segment-group {
     display: flex;
     background: rgba(0, 0, 0, 0.2);
@@ -1955,7 +1955,7 @@ input:checked + .slider:before {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* [文字化けコメントを削除しました] */
+/* [譁�ｭ怜喧縺代さ繝｡繝ｳ繝医ｒ蜑企勁縺励∪縺励◆] */
 .mini-month-select {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1971,12 +1971,12 @@ input:checked + .slider:before {
     border-color: var(--accent-blue);
 }
 
-/* 郢ｧ�ｰ郢晢ｽｩ郢晁ｼ斐″郢晢ｽｼ郢晉甥�ｽ邵ｺ�ｮ郢晁ｼ斐≦郢晢ｽｫ郢ｧ�ｿ郢ｧ蟶晄直髯ｦ�ｨ驕会ｽｺ邵ｺ�ｫ邵ｺ蜷ｶ�矩坡�ｿ隰ｨ�ｴ */
+/* 驛｢�ｧ�ｽ�ｰ驛｢譎｢�ｽ�ｩ驛｢譎�ｽｼ譁絶ｳ驛｢譎｢�ｽ�ｼ驛｢譎臥櫨�ｽ�ｽ驍ｵ�ｺ�ｽ�ｮ驛｢譎�ｽｼ譁絶襖驛｢譎｢�ｽ�ｫ驛｢�ｧ�ｽ�ｿ驛｢�ｧ陝ｶ譎�峩鬮ｯ�ｦ�ｽ�ｨ鬩穂ｼ夲ｽｽ�ｺ驍ｵ�ｺ�ｽ�ｫ驍ｵ�ｺ陷ｷ�ｶ�ｽ遏ｩ蝮｡�ｽ�ｿ髫ｰ�ｨ�ｽ�ｴ */
 .card-header-with-filter .period-filter {
     display: none;
 }
 
-/* --- 棚卸しモード専用スタイル --- */
+/* --- 譽壼査縺励Δ繝ｼ繝牙ｰら畑繧ｹ繧ｿ繧､繝ｫ --- */
 .inventory-view-switcher {
     margin-bottom: 20px;
 }
@@ -2641,7 +2641,7 @@ input:checked + .slider:before {
     }
 }
 
-/* --- 最新の取引履歴 (Transaction Item) リッチデザイン --- */
+/* --- 譛譁ｰ縺ｮ蜿門ｼ募ｱ･豁ｴ (Transaction Item) 繝ｪ繝�メ繝�じ繧､繝ｳ --- */
 .transaction-item {
     display: flex;
     align-items: center;
@@ -2751,7 +2751,7 @@ input:checked + .slider:before {
     opacity: 0.5;
 }
 
-/* PC調整 */
+/* PC隱ｿ謨ｴ */
 @media screen and (min-width: 769px) {
     .transaction-item {
         padding: 12px 16px;
@@ -2783,7 +2783,7 @@ input:checked + .slider:before {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 225px; /* 約3件分を表示、それ以上はスクロール */
+    max-height: 225px; /* 邏�3莉ｶ蛻�ｒ陦ｨ遉ｺ縲√◎繧御ｻ･荳翫�繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ */
     overflow-y: auto;
     padding-right: 5px;
 }
@@ -3092,12 +3092,12 @@ input:checked + .slider:before {
 
 /* --- iPhone / Mobile Layout Fixes (s0430-03, 04, 05) --- */
 @media screen and (max-width: 480px) {
-    /* 1. 在庫ヘッダーの最終調整 (重なり解消 ＋ 位置上げ) */
+    /* 1. 蝨ｨ蠎ｫ繝倥ャ繝繝ｼ縺ｮ譛邨りｪｿ謨ｴ (驥阪↑繧願ｧ｣豸� �� 菴咲ｽｮ荳翫￡) */
     .inventory-header {
         display: grid !important;
-        grid-template-columns: 1fr 120px !important; /* 右側の幅を広げて重なり防止 */
+        grid-template-columns: 1fr 120px !important; /* 蜿ｳ蛛ｴ縺ｮ蟷�ｒ蠎�￡縺ｦ驥阪↑繧企亟豁｢ */
         align-items: center !important;
-        gap: 12px !important; /* 隙間を確保 */
+        gap: 12px !important; /* 髫咎俣繧堤｢ｺ菫� */
         padding: 0 !important;
         position: relative;
     }
@@ -3110,16 +3110,16 @@ input:checked + .slider:before {
     #stock-search-input {
         width: 100% !important;
         min-width: 0 !important;
-        border-radius: 20px !important; /* 端を確実に丸める */
+        border-radius: 20px !important; /* 遶ｯ繧堤｢ｺ螳溘↓荳ｸ繧√ｋ */
     }
     
     .inventory-toggles-wrapper {
         display: flex !important;
         flex-direction: column !important;
-        gap: 6px !important; /* 3つのトグルの間隔を調整 */
+        gap: 6px !important; /* 3縺､縺ｮ繝医げ繝ｫ縺ｮ髢馴囈繧定ｪｿ謨ｴ */
         flex: none !important;
         align-items: flex-end !important;
-        transform: translateY(-5px) !important; /* 位置調整 */
+        transform: translateY(-5px) !important; /* 菴咲ｽｮ隱ｿ謨ｴ */
         min-width: 130px !important;
     }
 
@@ -3144,7 +3144,7 @@ input:checked + .slider:before {
         flex: none !important;
     }
 
-    /* 2. 期間セレクターのコンパクト化 (s0430-04) */
+    /* 2. 譛滄俣繧ｻ繝ｬ繧ｯ繧ｿ繝ｼ縺ｮ繧ｳ繝ｳ繝代け繝亥喧 (s0430-04) */
     .filter-row {
         gap: 6px !important;
         overflow-x: visible !important;
@@ -3162,7 +3162,7 @@ input:checked + .slider:before {
         max-width: 80px;
     }
 
-    /* 3. 取引履歴リストの最適化 (s0430-05) */
+    /* 3. 蜿門ｼ募ｱ･豁ｴ繝ｪ繧ｹ繝医�譛驕ｩ蛹� (s0430-05) */
     .transaction-item {
         padding: 12px 0 !important;
         gap: 10px !important;
@@ -3197,16 +3197,16 @@ input:checked + .slider:before {
         text-align: right !important;
     }
 
-    /* 追記: 余白の圧縮 (s3.png 対策) */
+    /* 霑ｽ險�: 菴咏區縺ｮ蝨ｧ邵ｮ (s3.png 蟇ｾ遲�) */
     #content-area {
-        padding-top: 14px !important; /* 10px詰める */
+        padding-top: 14px !important; /* 10px隧ｰ繧√ｋ */
     }
 
     .inventory-header {
-        margin-bottom: 0px !important; /* 10px詰める */
+        margin-bottom: 0px !important; /* 10px隧ｰ繧√ｋ */
     }
 
-    /* 追記: カードヘッダーと下部余白の調整 */
+    /* 霑ｽ險�: 繧ｫ繝ｼ繝峨�繝�ム繝ｼ縺ｨ荳矩Κ菴咏區縺ｮ隱ｿ謨ｴ */
     .card-header-with-badge {
         flex-wrap: wrap !important;
         gap: 8px !important;
@@ -3329,7 +3329,7 @@ input:checked + .slider:before {
     to { transform: rotate(360deg); }
 }
 
-/* --- 提案13: 直近取引履歴のインタラクティブ対応 --- */
+/* --- 謠先｡�13: 逶ｴ霑大叙蠑募ｱ･豁ｴ縺ｮ繧､繝ｳ繧ｿ繝ｩ繧ｯ繝�ぅ繝門ｯｾ蠢� --- */
 .item-name-text.clickable {
     cursor: pointer;
     position: relative;
@@ -3348,7 +3348,7 @@ input:checked + .slider:before {
     transform: scale(0.98);
 }
 
-/* 遷移後のハイライト効果 */
+/* 驕ｷ遘ｻ蠕後�繝上う繝ｩ繧､繝亥柑譫� */
 @keyframes flash-highlight {
     0% { background-color: transparent; }
     10% { background-color: rgba(22, 163, 74, 0.15); box-shadow: 0 0 15px rgba(22, 163, 74, 0.1); }
@@ -3466,7 +3466,7 @@ input:checked + .slider:before {
     font-size: 10px;
     font-weight: 600;
     line-height: 1;
-    margin-left: auto; /* 右端に寄せる */
+    margin-left: auto; /* 蜿ｳ遶ｯ縺ｫ蟇�○繧� */
 }
 
 .alert-processing-badge ion-icon {
@@ -3485,10 +3485,10 @@ input:checked + .slider:before {
     border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
-/* 在庫切れ(critical)カード内での表示 */
+/* 蝨ｨ蠎ｫ蛻�ｌ(critical)繧ｫ繝ｼ繝牙�縺ｧ縺ｮ陦ｨ遉ｺ */
 .alert-card.critical .alert-processing-badge {
     background: rgba(255, 255, 255, 0.95);
-    color: #b91c1c; /* ダークレッド */
+    color: #b91c1c; /* 繝繝ｼ繧ｯ繝ｬ繝�ラ */
     border: none;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
@@ -3545,3 +3545,91 @@ input:checked + .slider:before {
 
 
 
+
+/* --- QR Scanner UI --- */
+.scanner-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.85);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    backdrop-filter: blur(5px);
+}
+
+.scanner-container {
+    width: 100%;
+    max-width: 500px;
+    background: #fff;
+    border-radius: 20px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+
+#reader {
+    width: 100% !important;
+    border: none !important;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+#reader video {
+    border-radius: 12px;
+}
+
+.scanner-controls {
+    display: flex;
+    justify-content: center;
+    padding-top: 10px;
+}
+
+.btn-scan-stocktake {
+    background: var(--accent-green);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+    transition: all 0.2s ease;
+}
+
+.btn-scan-stocktake:active {
+    transform: scale(0.95);
+}
+
+.icon-btn-inline {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    margin-right: 4px;
+    cursor: pointer;
+}
+
+/* 読み取り成功時のアニメーション */
+@keyframes scan-success-blink {
+    0% { background: rgba(45, 206, 137, 0.1); }
+    50% { background: rgba(45, 206, 137, 0.4); }
+    100% { background: transparent; }
+}
+
+.scan-highlight {
+    animation: scan-success-blink 0.8s ease;
+}

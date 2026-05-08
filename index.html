@@ -7,6 +7,7 @@
     <!-- Google Fonts for typography -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
     <div class="app-container">
@@ -155,6 +156,9 @@
                         <div class="search-bar">
                             <ion-icon name="search-outline"></ion-icon>
                             <input type="text" id="stock-search-input" placeholder="在庫を検索...">
+                            <button id="stock-scan-btn-top" class="icon-btn-inline" title="QRスキャン">
+                                <ion-icon name="camera-outline"></ion-icon>
+                            </button>
                             <button id="stock-search-clear" title="検索をクリア">
                                 <ion-icon name="close-outline"></ion-icon>
                             </button>
@@ -649,8 +653,12 @@
             </div>
             <div class="stocktake-actions">
                 <div class="stocktake-note-container">
-                    <input type="text" id="stocktake-note" placeholder="棚卸の備考（例：2024年4月定期棚卸）">
+                    <input type="text" id="stocktake-note" placeholder="棚卸メモ (任意)">
                 </div>
+                <button id="stocktake-scan-btn" class="btn-scan-stocktake">
+                    <ion-icon name="camera-outline"></ion-icon>
+                    スキャン
+                </button>
                 <button id="stocktake-submit" class="btn-confirm-stocktake">
                     <ion-icon name="checkmark-done-outline"></ion-icon>
                     棚卸を確定
@@ -799,21 +807,22 @@
                         <label>部材名</label>
                         <input type="text" id="add-material-item" list="product-list" placeholder="部材名を検索・入力">
                     </div>
-                    <div class="input-grid">
-                        <div class="input-group">
-                            <label>数量</label>
-                            <input type="number" id="add-material-quantity" value="1" min="1">
-                        </div>
-                        <div class="input-group">
-                            <label>追加理由</label>
-                            <input type="text" id="add-material-reason" placeholder="作業ミス、部材不良など">
-                        </div>
-                    </div>
+
                 </div>
                 <div style="margin-top: 24px; display: flex; gap: 12px;">
                     <button type="button" id="add-material-cancel" class="primary-btn outline-btn">キャンセル</button>
                     <button type="button" id="add-material-submit" class="primary-btn">引き当てる</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QRスキャナーオーバーレイ (Body直下へ移動) -->
+    <div id="scanner-overlay" class="scanner-overlay" style="display: none;">
+        <div class="scanner-container">
+            <div id="reader"></div>
+            <div class="scanner-controls">
+                <button id="scanner-close-btn" class="btn-secondary">閉じる</button>
             </div>
         </div>
     </div>

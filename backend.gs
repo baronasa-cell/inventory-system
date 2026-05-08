@@ -1166,8 +1166,24 @@ function applyMasterRules(records, includeInactive = false) {
 
 function verifyAndAddMaster(sheetName, valueToAdd, extraUsage = null) {
   const data = DataCache.getValues(sheetName); // キャッシュ利用
-  const headers = data[0];
-  const existsIdx = data.findIndex((r, idx) => idx > 0 && r[1] === valueToAdd);
+  if (!data || data.length === 0) return { added: false };
+  const headers = data[0].map(h => h.toString().trim());
+  
+  // 検索対象の列（品名、仕入先など）を特定
+  const keyConfig = {
+    'M_商品': '品名',
+    'M_仕入先': '仕入先',
+    'M_売先': '売先',
+    'M_発送': '発送方法',
+    'M_経費品名': '品名',
+    'M_支払': '支払方法',
+    'M_仕訳': '仕訳名'
+  };
+  const keyHeader = keyConfig[sheetName] || headers[1];
+  const keyIdx = headers.indexOf(keyHeader);
+  
+  const existsIdx = data.findIndex((r, idx) => idx > 0 && r[keyIdx] === valueToAdd);
+  const sheet = SS.getSheetByName(sheetName);
   
   if (existsIdx !== -1) {
     if (sheetName === 'M_仕入先' && extraUsage !== null) {
@@ -1181,35 +1197,47 @@ function verifyAndAddMaster(sheetName, valueToAdd, extraUsage = null) {
         }
       }
     } else if (sheetName === 'M_商品' && extraUsage !== null) {
-      const cleanHeaders = headers.map(h => h.toString().trim());
-      const catCol = cleanHeaders.indexOf('カテゴリ') !== -1 ? cleanHeaders.indexOf('カテゴリ') : 2;
-      if (!data[existsIdx][catCol]) {
+      const catCol = headers.indexOf('カテゴリ');
+      if (catCol !== -1 && !data[existsIdx][catCol]) {
         sheet.getRange(existsIdx + 1, catCol + 1).setValue(extraUsage);
       }
     }
     return { added: false, updated: true };
   }
   
-  const nextOrder = data.length > 1 ? Math.max(...data.slice(1).map(r => parseInt(r[0]) || 0)) + 10 : 10;
   const newRow = Array(headers.length).fill("");
-  newRow[0] = nextOrder;
-  newRow[1] = valueToAdd;
   
-  const cleanHeaders = headers.map(h => h.toString().trim());
-  const useFlagCol = cleanHeaders.indexOf('使用FLG');
-  if (useFlagCol !== -1) newRow[useFlagCol] = 1;
+  // 商品IDの採番 (M_商品かつ1列目がIDの場合)
+  if (sheetName === 'M_商品' && (headers[0] === '商品ID' || headers[0] === 'ID')) {
+    newRow[0] = generateNextId(sheet, 'I');
+  }
   
+  // 表示順の設定
+  const orderIdx = headers.indexOf('表示順');
+  if (orderIdx !== -1) {
+    const nextOrder = data.length > 1 ? Math.max(...data.slice(1).map(r => parseInt(r[orderIdx]) || 0)) + 10 : 10;
+    newRow[orderIdx] = nextOrder;
+  }
+  
+  // キー項目（品名など）の設定
+  newRow[keyIdx] = valueToAdd;
+  
+  // カテゴリや用途区分の設定
   if (sheetName === 'M_仕入先' && extraUsage !== null) {
-    const uCol = cleanHeaders.indexOf('用途区分');
+    const uCol = headers.indexOf('用途区分');
     if (uCol !== -1) newRow[uCol] = extraUsage;
   } else if (sheetName === 'M_商品' && extraUsage !== null) {
-    const uCol = cleanHeaders.indexOf('カテゴリ') !== -1 ? cleanHeaders.indexOf('カテゴリ') : 2;
-    newRow[uCol] = extraUsage;
+    const catCol = headers.indexOf('カテゴリ');
+    if (catCol !== -1) newRow[catCol] = extraUsage;
   }
-  const sheet = SS.getSheetByName(sheetName);
+  
+  // 使用FLGの設定
+  const useFlagCol = headers.indexOf('使用FLG');
+  if (useFlagCol !== -1) newRow[useFlagCol] = 1;
+  
   sheet.appendRow(newRow);
-  DataCache.clear(sheetName); // キャッシュクリア
-  return { added: true };
+  DataCache.clear(sheetName);
+  return { added: true, updated: false };
 }
 
 function revertFIFO(triggerId, type) {
