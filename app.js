@@ -1888,10 +1888,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topScanBtn = document.getElementById('stock-scan-btn-top');
         const bottomScanBtn = document.getElementById('stocktake-scan-btn');
         const closeBtn = document.getElementById('scanner-close-btn');
-
+        const fileBtn = document.getElementById('scanner-file-btn');
+        const fileInput = document.getElementById('qr-file-input');
+ 
         if (topScanBtn) topScanBtn.addEventListener('click', () => startScanner());
         if (bottomScanBtn) bottomScanBtn.addEventListener('click', () => startScanner());
         if (closeBtn) closeBtn.addEventListener('click', () => stopScanner());
+        
+        if (fileBtn) fileBtn.addEventListener('click', () => fileInput.click());
+        if (fileInput) {
+            fileInput.addEventListener('change', e => {
+                if (e.target.files.length === 0) return;
+                const file = e.target.files[0];
+                if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+                
+                showToast('画像を解析中...', 'info');
+                html5QrCode.scanFile(file, true)
+                    .then(decodedText => {
+                        onScanSuccess(decodedText);
+                        stopScanner();
+                    })
+                    .catch(err => {
+                        alert("QRコードを認識できませんでした。別の角度から撮影してください。");
+                        console.error("Scan file error:", err);
+                    });
+            });
+        }
     }
 
     function startScanner() {
