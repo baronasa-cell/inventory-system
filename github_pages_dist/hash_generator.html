@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パスワード・ハッシュ生成ツール</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5rem; color: #333; margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #666; }
+        input { width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        .result { background: #eef; padding: 15px; border-radius: 6px; border: 1px solid #ccd; word-break: break-all; font-family: monospace; min-height: 1.5em; }
+        .hint { font-size: 0.85rem; color: #888; margin-top: 10px; }
+        .copy-btn { margin-top: 15px; background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .copy-btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔐 パスワード・ハッシュ生成</h1>
+        <p>このツールはオフラインで動作します。入力した内容はどこにも送信されません。</p>
+        
+        <label for="password">設定したいパスワード</label>
+        <input type="text" id="password" placeholder="例: my-secret-2024" oninput="generateHash()">
+        
+        <label>生成されたハッシュ値 (これをAUTH_HASHに設定)</label>
+        <div id="result" class="result"></div>
+        
+        <button class="copy-btn" onclick="copyResult()">コピーする</button>
+        
+        <p class="hint">※この文字列をGASの「スクリプトプロパティ」の <b>AUTH_KEY</b> の値に貼り付けてください。</p>
+    </div>
+
+    <script>
+        async function generateHash() {
+            const password = document.getElementById('password').value;
+            if (!password) {
+                document.getElementById('result').innerText = '';
+                return;
+            }
+            
+            // SHA-256でハッシュ化
+            const msgUint8 = new TextEncoder().encode(password);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            document.getElementById('result').innerText = hashHex;
+        }
+
+        function copyResult() {
+            const text = document.getElementById('result').innerText;
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('コピーしました！');
+            });
+        }
+    </script>
+</body>
+</html>

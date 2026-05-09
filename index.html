@@ -7,10 +7,20 @@
     <!-- Google Fonts for typography -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
 </head>
 <body>
-    <div class="app-container">
+    <!-- ログインモーダル (GitHub Pages用) -->
+    <div id="login-modal" class="modal" style="display: none; z-index: 9999; background: rgba(0,0,0,0.8);">
+        <div class="modal-content" style="max-width: 400px; margin: 15% auto; text-align: center;">
+            <h2 style="margin-bottom: 20px;">🔐 認証</h2>
+            <p style="margin-bottom: 20px; font-size: 0.9rem; color: #666;">パスワードを入力してください</p>
+            <input type="password" id="login-password" class="search-input" placeholder="パスワード" style="width: 100%; margin-bottom: 20px; padding: 12px;">
+            <div id="login-error" style="color: #e74c3c; margin-bottom: 15px; display: none; font-size: 0.85rem;">パスワードが正しくありません</div>
+            <button id="login-submit-btn" class="primary-btn" style="width: 100%;">ログイン</button>
+        </div>
+    </div>
+    <div class="app-container" style="display: none;">
         <!-- Header -->
         <header class="glass-header">
             <div class="header-main">
@@ -38,10 +48,12 @@
                 </div>
 
                 <!-- 在庫アラートセクション (常に上部に表示) -->
-                <div id="inventory-alerts-container" class="alert-section">
-                    <div class="empty-history" style="padding: 20px; text-align: center; color: var(--text-muted);">
-                        <ion-icon name="sync-outline" class="spinning" style="font-size: 20px; margin-bottom: 4px;"></ion-icon>
-                        <div>在庫状況を確認中...</div>
+                <div class="card glass-card alert-section">
+                    <div id="inventory-alerts-container">
+                        <div class="empty-history" style="padding: 20px; text-align: center; color: var(--text-muted);">
+                            <ion-icon name="sync-outline" class="spinning" style="font-size: 20px; margin-bottom: 4px;"></ion-icon>
+                            <div>在庫状況を確認中...</div>
+                        </div>
                     </div>
                 </div>
 
@@ -103,8 +115,9 @@
                                 <ion-icon name="list-outline"></ion-icon>
                                 月次明細
                             </h2>
-                            <button id="export-ledger-btn" class="icon-btn-primary" title="スプレッドシートに出力">
+                            <button id="export-ledger-btn" class="btn-export" title="スプレッドシートに出力">
                                 <ion-icon name="cloud-download-outline"></ion-icon>
+                                <span>帳票出力</span>
                             </button>
                         </div>
 
@@ -156,11 +169,11 @@
                         <div class="search-bar">
                             <ion-icon name="search-outline"></ion-icon>
                             <input type="text" id="stock-search-input" placeholder="在庫を検索...">
-                            <button id="stock-scan-btn-top" class="icon-btn-inline" title="QRスキャン">
-                                <ion-icon name="camera-outline"></ion-icon>
-                            </button>
                             <button id="stock-search-clear" title="検索をクリア">
                                 <ion-icon name="close-outline"></ion-icon>
+                            </button>
+                            <button id="stock-scan-btn-top" class="icon-btn-inline" title="QRスキャン">
+                                <ion-icon name="camera-outline"></ion-icon>
                             </button>
                         </div>
                     </div>

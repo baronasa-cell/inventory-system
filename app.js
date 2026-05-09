@@ -1,12 +1,9 @@
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("System initialization started... (v2.2-QR-LayoutFixed)");
     
-    // 起動確認用のトーストを表示（デバッグ用：後で消せます）
-    if (typeof showToast === 'function') showToast('システムを起動しています...', 'success');
-
     // ---- API Configuration ----
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzexidaVzlRQ1_StDZo6Oo_oOt9TtX33Nk2sPwbo-oDzuRW6_Tbt2_zQxlxv-Ctr4jZuA/exec';
-    const AUTH_KEY = 'inventory-api-auth-8k2p9m';
+    let currentAuthKey = localStorage.getItem('inventory_auth_key') || '';
     let useMock = false;
 
     // Global state
@@ -32,86 +29,111 @@ document.addEventListener('DOMContentLoaded', async () => {
         'M_商品': {
             key: '品名',
             fields: [
-                { name: '商品ID', type: 'text', visible: true, editable: false }, // 自動採番
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '品名', type: 'text', visible: true, editable: false }, // 編集時はReadOnly
-                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', '単体商品', '商品', '経費', '製造'] },
-                { name: '説明', type: 'textarea', visible: true, editable: true },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true },
-                { name: '画像URL', visible: false },
-                { name: '保管場所', type: 'text', visible: true, editable: true },
-                { name: 'QR/バーコード', type: 'text', visible: true, editable: true } // I列
+                { name: '商品ID', type: 'text', visible: true, editable: false, required: true },
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '品名', type: 'text', visible: true, editable: false, required: true },
+                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', '単体商品', '商品', '経費', '製造'], required: true },
+                { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
+                { name: '画像URL', visible: false, required: false },
+                { name: '保管場所', type: 'text', visible: true, editable: true, required: false },
+                { name: 'QR/バーコード', type: 'text', visible: true, editable: true, required: false }
             ]
         },
         'M_仕入先': {
             key: '仕入先',
             fields: [
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '仕入先', type: 'text', visible: true, editable: false },
-                { name: '用途区分', type: 'select', visible: true, editable: true, options: [{v:1, l:'1:仕入のみ'}, {v:2, l:'2:経費のみ'}, {v:3, l:'3:両方'}] },
-                { name: '説明', type: 'textarea', visible: true, editable: true },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '仕入先', type: 'text', visible: true, editable: false, required: true },
+                { name: '用途区分', type: 'select', visible: true, editable: true, options: [{v:1, l:'1:仕入のみ'}, {v:2, l:'2:経費のみ'}, {v:3, l:'3:両方'}], required: true },
+                { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
             ]
         },
         'M_売先': {
             key: '売先',
             fields: [
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '売先', type: 'text', visible: true, editable: false },
-                { name: '手数料率', type: 'number', visible: true, editable: true },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '売先', type: 'text', visible: true, editable: false, required: true },
+                { name: '手数料率', type: 'number', visible: true, editable: true, required: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
             ]
         },
         'M_発送': {
             key: '発送方法',
             fields: [
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '発送方法', type: 'text', visible: true, editable: false },
-                { name: '送料', type: 'number', visible: true, editable: true },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '発送方法', type: 'text', visible: true, editable: false, required: true },
+                { name: '送料', type: 'number', visible: true, editable: true, required: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
             ]
         },
         'M_BOM': {
-            key: '品名', // 実際は複合キーだがバックエンドで対応
+            key: '品名',
             fields: [
-                { name: '品名', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>r['カテゴリ']==='商品' },
-                { name: '部品', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>['パーツ','単体商品'].includes(r['カテゴリ']) },
-                { name: '数量', type: 'number', visible: true, editable: true },
-                { name: '説明', type: 'textarea', visible: true, editable: true }
+                { name: '品名', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>r['カテゴリ']==='商品', required: true },
+                { name: '部品', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>['パーツ','単体商品'].includes(r['カテゴリ']), required: true },
+                { name: '数量', type: 'number', visible: true, editable: true, required: true },
+                { name: '説明', type: 'textarea', visible: true, editable: true, required: false }
             ]
         },
         'M_経費品名': {
             key: '品名',
             fields: [
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '品名', type: 'text', visible: true, editable: false },
-                { name: 'デフォルト仕訳', type: 'select', visible: true, editable: true, refMaster: 'M_仕訳' },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '品名', type: 'text', visible: true, editable: false, required: true },
+                { name: 'デフォルト仕訳', type: 'select', visible: true, editable: true, refMaster: 'M_仕訳', required: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
             ]
         },
         'T_在庫集計': {
             key: '品名',
             fields: [
-                { name: '優先度', type: 'number', visible: true, editable: true },
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '品名', type: 'text', visible: true, editable: false },
-                { name: 'カテゴリ', type: 'text', visible: true, editable: false },
-                { name: '現在庫数', type: 'number', visible: true, editable: false },
-                { name: '閾値', type: 'number', visible: true, editable: true },
-                { name: '最終更新日', visible: false },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true },
-                { name: '最終棚卸日', type: 'text', visible: true, editable: false },
-                { name: '商品ID', type: 'text', visible: true, editable: false }, 
-                { name: '保管場所', type: 'text', visible: true, editable: false },
-                { name: 'QR/バーコード', type: 'text', visible: true, editable: false }
+                { name: '優先度', type: 'number', visible: true, editable: true, required: true },
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '品名', type: 'text', visible: true, editable: false, required: true },
+                { name: 'カテゴリ', type: 'text', visible: true, editable: false, required: true },
+                { name: '現在庫数', type: 'number', visible: true, editable: false, required: true },
+                { name: '閾値', type: 'number', visible: true, editable: true, required: true },
+                { name: '最終更新日', visible: false, required: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
+                { name: '最終棚卸日', type: 'text', visible: true, editable: false, required: false },
+                { name: '商品ID', type: 'text', visible: true, editable: false, required: true }, 
+                { name: '保管場所', type: 'text', visible: true, editable: false, required: false },
+                { name: 'QR/バーコード', type: 'text', visible: true, editable: false, required: false }
             ]
         },
         'M_支払': {
             key: '支払方法',
             fields: [
-                { name: '表示順', type: 'number', visible: true, editable: true },
-                { name: '支払方法', type: 'text', visible: true, editable: false },
-                { name: '使用FLG', type: 'switch', visible: true, editable: true }
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '支払方法', type: 'text', visible: true, editable: false, required: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
+            ]
+        },
+        'M_ステータス': {
+            key: 'ステータス名称',
+            fields: [
+                { name: '表示順', type: 'number', visible: true, editable: true, required: true },
+                { name: '対象機能', type: 'text', visible: true, editable: true, required: true },
+                { name: '画面名称', type: 'text', visible: true, editable: true, required: true },
+                { name: 'ステータス名称', type: 'text', visible: true, editable: true, required: true },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
+            ]
+        },
+        'M_画面制御': {
+            key: '要素ID',
+            fields: [
+                { name: '対象機能', type: 'text', visible: true, editable: true, required: true },
+                { name: '画面名称', type: 'text', visible: true, editable: true, required: true },
+                { name: '要素ID', type: 'text', visible: true, editable: true, required: true },
+                { name: '画面上の項目名', type: 'text', visible: true, editable: true, required: true },
+                { name: 'タイプ', type: 'text', visible: true, editable: true, required: true },
+                { name: '参照マスタ', type: 'text', visible: true, editable: true, required: true },
+                { name: '固定値の内容', type: 'text', visible: true, editable: true, required: false },
+                { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
+                { name: '抽出条件', type: 'textarea', visible: true, editable: true, required: false },
+                { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
             ]
         }
     };
@@ -124,38 +146,70 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // ---- 1. Event Listener Registrations (Essential UI) ----
-        // This part must run even if API fails
         setupNavigation();
         setupToggleLogics();
         setupSettingsListeners();
+        setupScannerListeners(); // スキャナーはデータロードを待たずに即座に有効化
 
         // ---- 2. System Initialization (Data Fetching) ----
-        // 1. まずキャッシュからマスタを読み込んでUIを構築（爆速起動用）
+        // 認証チェック (GAS環境以外の場合)
+        if (typeof google === 'undefined' && !currentAuthKey) {
+            setupLoginHandlers();
+            showLoginModal();
+            return; // ログイン完了まで中断
+        }
+        setupLoginHandlers(); // リトライ用などに常にセットアップ
+
+        // 認証済みの場合、即座にコンテナを表示 (読み込み中アニメーションを表示させるため)
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) {
+            appContainer.style.display = 'flex';
+        }
+
+        // 1. まずキャッシュからマスタを読み込んでUIを構築
         loadMastersFromCache();
 
-        // 2. データを一括取得して表示 (バッジ表示のために最初から全履歴を取得)
-        await initSystem('all');
+        console.time('Essential Load');
+        await initSystem('essential');
+        console.timeEnd('Essential Load');
+
+
+        // 4. 残りの詳細履歴データをバックグラウンドで非同期に取得 (マスタは取得済みなのでスキップ)
+        initSystem('all', { skipMasters: true }).then(() => {
+            console.log("Background data load completed.");
+        }).catch(err => {
+            console.warn("Background load failed:", err);
+        });
 
         // ---- 3. Image Feature Initializations ----
         setupImagePreviewListeners();
         setupStockUpdateListeners();
         setupStockFilters();
-        setupScannerListeners();
 
         console.log("System initialization completed successfully.");
     } catch (error) {
         console.error("Critical System Error:", error);
-        alert("システムの起動中に致命的なエラーが発生しました。ブラウザのコンソール（F12）で詳細を確認してください。\n\nエラー内容: " + error.message);
-        // エラーが起きてもナビゲーションだけは動くように試みる
+        
+        // 認証エラー(401)の場合はアラートを出さずhandleUnauthorizedに任せる
+        if (error.message.includes("Unauthorized") || error.message.includes("401")) {
+            handleUnauthorized();
+        } else {
+            alert("システムの起動中に致命的なエラーが発生しました。\n\nエラー内容: " + error.message);
+        }
+        
+        // エラー時はコンテナを隠したままにする
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) appContainer.style.display = 'none';
+        
         setupNavigation();
     }
 
     //* --- 利益・進捗バッジ --- */
 
-    async function initSystem(scope = 'all') {
-        console.log(`Fetching system init data (scope: ${scope})...`);
+    async function initSystem(scope = 'all', options = {}) {
+        console.log(`Fetching system init data (scope: ${scope}, skipMasters: ${options.skipMasters})...`);
         try {
-            const response = await fetchAPI('getInitData', { scope: scope });
+            const response = await fetchAPI('getInitData', { scope: scope, skipMasters: options.skipMasters });
             if (response.status === 'success') {
                 // マスタの処理（二次元配列をオブジェクトに変換）
                 const masters = {};
@@ -664,7 +718,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             return { status: 'error', message: 'Mock API not found' };
         }
 
-        const bodyData = Object.assign({ action: action, key: AUTH_KEY }, payload);
+        const bodyData = Object.assign({ action: action, key: currentAuthKey }, payload);
+        
+        if (!currentAuthKey && action !== 'getInitData') {
+            console.warn(`[fetchAPI] Warning: No auth key for action: ${action}`);
+        }
 
         // GAS本番環境 (google.script.run が存在する場合)
         if (typeof google !== 'undefined' && google.script && google.script.run) {
@@ -672,6 +730,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 google.script.run
                     .withSuccessHandler(res => {
                         if (!res) reject(new Error("Server returned null response"));
+                        else if (res.status === 'error' && res.message.includes('Unauthorized')) {
+                            handleUnauthorized();
+                            reject(new Error(res.message));
+                        }
                         else resolve(res);
                     })
                     .withFailureHandler(err => reject(new Error(err.message || "Server connection failed")))
@@ -680,13 +742,124 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // ローカル環境 or フォールバック (fetch を使用)
-        const response = await fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify(bodyData)
-        });
+        try {
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify(bodyData)
+            });
 
-        if (!response.ok) throw new Error("Network response was not ok: " + response.status);
-        return await response.json();
+            if (!response.ok) {
+                if (response.status === 401) {
+                    handleUnauthorized();
+                }
+                throw new Error("Network response was not ok: " + response.status);
+            }
+            
+            const result = await response.json();
+            if (result.status === 'error' && result.message.includes('Unauthorized')) {
+                console.error(`[fetchAPI] Unauthorized error for action: ${action}`, result);
+                handleUnauthorized();
+            }
+            return result;
+        } catch (error) {
+            console.error("Fetch Error:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * 認証エラー時の処理
+     */
+    function handleUnauthorized() {
+        localStorage.removeItem('inventory_auth_key');
+        currentAuthKey = '';
+        showLoginModal();
+    }
+
+    /**
+     * パスワードをハッシュ化 (SHA-256)
+     */
+    async function hashPassword(password) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    /**
+     * ログインモーダルの表示
+     */
+    function showLoginModal() {
+        const modal = document.getElementById('login-modal');
+        if (modal) {
+            modal.style.display = 'block';
+            document.getElementById('login-password').focus();
+        }
+    }
+
+    /**
+     * ログイン関連のイベントハンドラ設定
+     */
+    function setupLoginHandlers() {
+        const submitBtn = document.getElementById('login-submit-btn');
+        const passwordInput = document.getElementById('login-password');
+        const errorMsg = document.getElementById('login-error');
+
+        if (!submitBtn || !passwordInput) return;
+
+        const handleLogin = async () => {
+            const password = passwordInput.value;
+            if (!password) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = '認証中...';
+            errorMsg.style.display = 'none';
+
+            try {
+                // バックエンドでハッシュ化を行うため、ここでは生のパスワードを送信
+                const bodyData = { action: 'getInitData', key: password, scope: 'check' };
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(bodyData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    // 認証成功
+                    currentAuthKey = password;
+                    localStorage.setItem('inventory_auth_key', password);
+                    document.getElementById('login-modal').style.display = 'none';
+                    
+                    // システムコンテナを表示（重要：ブランク画面回避）
+                    const appContainer = document.querySelector('.app-container');
+                    if (appContainer) {
+                        appContainer.style.display = 'flex';
+                    }
+
+                    // システム初期化を再開
+                    if (typeof showToast === 'function') showToast('システムを起動しています...', 'success');
+                    initSystem('all');
+                } else {
+                    errorMsg.textContent = result.message || 'パスワードが正しくありません';
+                    errorMsg.style.display = 'block';
+                }
+            } catch (e) {
+                console.error("Login error:", e);
+                errorMsg.textContent = '通信エラーが発生しました';
+                errorMsg.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'ログイン';
+            }
+        };
+
+        if (submitBtn) submitBtn.onclick = handleLogin;
+        if (passwordInput) {
+            passwordInput.onkeypress = (e) => {
+                if (e.key === 'Enter') handleLogin();
+            };
+        }
     }
 
     function setupNavigation() {
@@ -764,7 +937,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initSystem().then(() => {
                     if (icon) icon.style.animation = '';
                     setLoading(false);
-                    showToast('同期が完了しました');
                 }).catch(e => {
                     if (icon) icon.style.animation = '';
                     setLoading(false);
@@ -1037,11 +1209,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const allStockProducts = currentMasters['T_在庫集計'] || [];
 
         const filtered = allStockProducts.filter(p => {
-            const name = (p['品名'] || "").toLowerCase();
-            const category = (p['カテゴリ'] || "").toLowerCase();
-            const id = (p['商品ID'] || "").toLowerCase();
-            const barcode = (p['QR/バーコード'] || "").toLowerCase();
-            const location = (p['保管場所'] || "").toLowerCase();
+            const name = String(p['品名'] || "").toLowerCase();
+            const category = String(p['カテゴリ'] || "").toLowerCase();
+            
+            // マスタからJANコードとIDを補完して検索対象にする
+            const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === p['品名']);
+            const id = String( (itemInMaster && itemInMaster['商品ID']) || p['商品ID'] || "").toLowerCase();
+            const barcode = String( (itemInMaster && itemInMaster['QR/バーコード']) || p['QR/バーコード'] || "").toLowerCase();
+            const location = String(p['保管場所'] || (itemInMaster && itemInMaster['保管場所']) || "").toLowerCase();
+            
             const useFlag = parseInt(p['使用FLG']) !== 0;
             const threshold = parseFloat(p['閾値']) || 0;
             const stock = parseFloat(p['現在庫数']) || 0;
@@ -1590,9 +1766,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === itemName);
             const imageUrl = itemInMaster ? itemInMaster['画像URL'] : null;
-            const itemID = row['商品ID'] || '';
-            const location = row['保管場所'] || '';
-            const barcode = row['QR/バーコード'] || '';
+            const itemID = (itemInMaster && itemInMaster['商品ID']) || row['商品ID'] || '';
+            const location = row['保管場所'] || (itemInMaster && itemInMaster['保管場所']) || '';
+            const barcode = (itemInMaster && itemInMaster['QR/バーコード']) || row['QR/バーコード'] || '';
 
             card.setAttribute('data-item-name', itemName);
             card.setAttribute('data-item-id', itemID);
@@ -1919,6 +2095,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function startScanner() {
         const overlay = document.getElementById('scanner-overlay');
         overlay.style.display = 'flex';
+        
+        if (typeof showToast === 'function') showToast('カメラを起動しています...', 'info');
 
         if (!html5QrCode) {
             html5QrCode = new Html5Qrcode("reader");
@@ -1927,9 +2105,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
         html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .then(() => {
+                if (typeof showToast === 'function') showToast('スキャナーが起動しました', 'success');
+            })
             .catch(err => {
                 console.error("Scanner start error:", err);
-                alert("カメラの起動に失敗しました。カメラの使用を許可してください。");
+                const errorName = err.name || "";
+                let msg = "カメラの起動に失敗しました。";
+                if (errorName === "NotAllowedError") msg += "\nカメラの使用許可を確認してください。";
+                else if (errorName === "NotFoundError") msg += "\nカメラが見つかりません。";
+                else msg += "\n詳細: " + err;
+                
+                alert(msg);
                 overlay.style.display = 'none';
             });
     }
@@ -1954,41 +2141,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (searchInput) {
                 searchInput.value = loc;
                 searchInput.dispatchEvent(new Event('input')); // 検索実行
+                
+                // 在庫タブを表示
+                const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
+                if (invTabBtn) invTabBtn.click();
             }
             return;
         }
 
-        // 2. 商品ID、品名、またはバーコードでの照合
-        const cards = Array.from(document.querySelectorAll('.stock-item-card'));
-        const matches = cards.filter(card => {
-            const id = card.getAttribute('data-item-id');
-            const name = card.getAttribute('data-item-name');
-            const bc = card.getAttribute('data-barcode');
-            return id === decodedText || bc === decodedText || name === decodedText;
-        });
+        // 2. JANコードまたは商品IDを検索窓に入力して「在庫タブ」を表示
+        const searchInput = document.getElementById('stock-search-input');
+        if (searchInput) {
+            // 在庫タブに切り替え
+            const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
+            if (invTabBtn) invTabBtn.click();
 
-        if (matches.length === 1) {
-            // 一意に決まる場合：スクロール、ハイライト、入力フォーカス
-            const targetCard = matches[0];
-            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetCard.classList.add('scan-highlight');
-            setTimeout(() => targetCard.classList.remove('scan-highlight'), 1500);
+            // 検索窓に値をセット
+            searchInput.value = decodedText;
+            searchInput.dispatchEvent(new Event('input')); // 検索実行
 
-            const input = targetCard.querySelector('.stepper-input');
-            if (input) {
-                input.focus();
-                input.select();
-            }
-        } else if (matches.length > 1) {
-            // 重複する場合（同一JANコードなど）：一覧をその値で絞り込む
-            showToast(`${matches.length}件の商品がヒットしました。絞り込み表示します。`);
-            const searchInput = document.getElementById('stock-search-input');
-            if (searchInput) {
-                searchInput.value = decodedText;
-                searchInput.dispatchEvent(new Event('input')); // 検索実行
-            }
-        } else {
-            alert(`スキャン結果: "${decodedText}" に一致する商品は見つかりませんでした。`);
+            if (typeof showToast === 'function') showToast(`スキャン結果: ${decodedText} で検索しました`, 'success');
         }
     }
 
@@ -2699,8 +2871,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const profitYearHTML = isFY ? '' : getGrowthHTML(calcRate(current.profit, lastYear.profit), yearLabel);
 
             const pSales = current.personalSales || 0;
-            const salesTotalHTML = `¥${Math.round(current.sales).toLocaleString()}${pSales > 0 ? `<span style="font-size:0.75em;color:var(--text-muted);margin-left:4px;">(¥${Math.round(current.sales + pSales).toLocaleString()})</span>` : ''}`;
-            const profitTotalHTML = `¥${Math.round(current.profit).toLocaleString()}${pSales > 0 ? `<span style="font-size:0.75em;color:var(--text-muted);margin-left:4px;">(¥${Math.round(current.profit + pSales).toLocaleString()})</span>` : ''}`;
+            const salesTotalHTML = `¥${Math.round(current.sales).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:0.75em;color:var(--text-muted);">(¥${Math.round(current.sales + pSales).toLocaleString()})</span>` : ''}`;
+            const profitTotalHTML = `¥${Math.round(current.profit).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:0.75em;color:var(--text-muted);">(¥${Math.round(current.profit + pSales).toLocaleString()})</span>` : ''}`;
 
             summaryCards.innerHTML = `
                 <div class="mini-summary-card income">
@@ -2910,7 +3082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return `
                     <tr>
                         <td class="sticky-col first">${formatDate(row['日付'], 'short')}</td>
-                        <td class="sticky-col second" title="${itemName}">${itemName}</td>
+                        <td class="sticky-col second" title="${itemName}" onclick="this.classList.toggle('expanded')">${itemName}</td>
                         <td>${s > 0 ? '¥' + s.toLocaleString() : "-"}</td>
                         <td>${p > 0 ? '¥' + p.toLocaleString() : "-"}</td>
                         <td>${c > 0 ? '¥' + c.toLocaleString() : "-"}</td>
@@ -3605,7 +3777,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 keys = rawKeys;
             }
 
-            head.innerHTML = `<tr>${keys.map(k => `<th>${k}</th>`).join('')}<th></th></tr>`;
+            head.innerHTML = `<tr><th class="sticky-col">操作</th>${keys.map(k => `<th>${k}</th>`).join('')}</tr>`;
 
             // ボディ生成
             renderMasterTableBody(data, keys, masterKey);
@@ -3670,11 +3842,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnEdit.innerHTML = `<ion-icon name="create-outline"></ion-icon>`;
             btnEdit.onclick = () => showMasterEntryModal(activeMasterKey, keys, row);
 
+            tdActions.classList.add('sticky-col');
             tdActions.appendChild(btnStatus);
             tdActions.appendChild(btnEdit);
 
-            tr.innerHTML = html;
             tr.appendChild(tdActions);
+            tr.insertAdjacentHTML('beforeend', html);
             body.appendChild(tr);
         });
     }
@@ -3764,6 +3937,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 `;
             } else if (type === 'textarea') {
                 inputHtml = `<textarea name="${key}" ${!isEditable ? 'readonly class="readonly-field"' : ''}>${value !== undefined ? value : ''}</textarea>`;
+            } else if (key === 'QR/バーコード') {
+                inputHtml = `
+                    <div class="input-with-icon">
+                        <input type="text" 
+                               name="${key}" 
+                               value="${value !== undefined ? value : ''}"
+                               ${!isEditable ? 'readonly class="readonly-field"' : ''}>
+                        <button type="button" class="icon-input-btn" onclick="triggerMasterScanner(this)" title="スキャン">
+                            <ion-icon name="camera-outline"></ion-icon>
+                        </button>
+                    </div>
+                `;
             } else {
                 inputHtml = `
                     <input type="${type}" 
@@ -3774,7 +3959,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 `;
             }
 
-            group.innerHTML = `<label>${key}</label>${inputHtml}`;
+            const labelSuffix = fieldConfig && fieldConfig.required === false ? ' <span style="font-size:10px; color:#999;">(任意)</span>' : '';
+            group.innerHTML = `<label>${key}${labelSuffix}</label>${inputHtml}`;
             fields.appendChild(group);
         });
 
@@ -3798,7 +3984,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     value = element ? element.value.trim() : '';
                 }
 
-                if (value === "" && type !== 'switch') {
+                const isRequired = fieldConfig ? fieldConfig.required !== false : true;
+                if (isRequired && value === "" && type !== 'switch') {
                     if (!hasError) showToast(`「${key}」を入力してください。`, 'error');
                     hasError = true;
                 }
@@ -3857,6 +4044,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
     }
+
+    // マスタ編集用スキャナー起動
+    window.triggerMasterScanner = function(btn) {
+        const input = btn.previousElementSibling;
+        const originalOnScanSuccess = window.onScanSuccess;
+        
+        // 一時的なスキャン成功時処理
+        window.onScanSuccess = function(decodedText) {
+            input.value = decodedText;
+            stopScanner();
+            showToast('バーコードを読み取りました', 'success');
+            // 元の処理に戻す
+            window.onScanSuccess = originalOnScanSuccess;
+        };
+        
+        startScanner();
+    };
 
     /**
      * トースト通知を表示する

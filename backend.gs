@@ -4,7 +4,21 @@
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
-const AUTH_KEY = 'inventory-api-auth-8k2p9m';
+const props = PropertiesService.getScriptProperties();
+const AUTH_KEY = (props.getProperty('AUTH_KEY') || props.getProperty('inventory_auth_key') || "").trim();
+
+/**
+ * 値を SHA-256 でハッシュ化する (認証用)
+ */
+function hashValue(value) {
+  if (!value) return "";
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value);
+  // Array.from を使って確実に JavaScript の配列として扱い、各バイトを 0-255 に変換してから 16進数文字列にする
+  return Array.from(digest).map(b => {
+    const unsignedByte = b < 0 ? b + 256 : b;
+    return unsignedByte.toString(16).padStart(2, '0');
+  }).join('');
+}
 
 /**
  * 1回のリクエスト内でのデータ再利用用キャッシュ
@@ -79,11 +93,18 @@ function apiEntryPoint(payload) {
  * POSTリクエストの処理 (ローカル開発/外部連携用)
  */
 function doPost(e) {
+  console.log('doPost: Received request');
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
     const p = JSON.parse(e.postData.contents);
-    if (p.key !== AUTH_KEY) {
+    const inputHash = hashValue(p.key);
+    
+    // セキュリティ強化: ハッシュ一致のみを許可 (生パスワードでの一致は認めない)
+    if (inputHash !== AUTH_KEY) {
+      const logMsg = `Auth Failure. Expected: [${AUTH_KEY}] (len:${AUTH_KEY.length}), Received: [${inputHash}] (len:${inputHash.length})`;
+      console.warn(logMsg);
+      Logger.log(logMsg); 
       return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Unauthorized' })).setMimeType(ContentService.MimeType.JSON);
     }
     const result = handleRequest(p);
@@ -110,7 +131,8 @@ function handleRequest(p) {
         break;
       case 'getInitData':
         var scope = p.scope || 'all';
-        result = { status: 'success', data: { masters: fetchMasterData(false), historyData: fetchHistoryData(scope) } };
+        var masters = (p.skipMasters === true) ? undefined : fetchMasterData(false);
+        result = { status: 'success', data: { masters: masters, historyData: fetchHistoryData(scope) } };
         break;
       case 'verifyAndAddMaster':
         result = verifyAndAddMaster(p.sheet, p.value);
@@ -168,6 +190,7 @@ function doGet(e) {
       .setTitle('在庫・販売・利益 統合管理システム')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
 }
+
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();

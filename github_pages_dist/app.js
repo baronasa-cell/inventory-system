@@ -1,8 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("System initialization started... (v2.2-QR-LayoutFixed)");
     
-    // 起動確認用のトーストを表示（デバッグ用：後で消せます）
-    if (typeof showToast === 'function') showToast('システムを起動しています...', 'success');
 
     // ---- API Configuration ----
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzexidaVzlRQ1_StDZo6Oo_oOt9TtX33Nk2sPwbo-oDzuRW6_Tbt2_zQxlxv-Ctr4jZuA/exec';
@@ -127,6 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupNavigation();
         setupToggleLogics();
         setupSettingsListeners();
+        setupScannerListeners(); // スキャナーはデータロードを待たずに即座に有効化
 
         // ---- 2. System Initialization (Data Fetching) ----
         // 認証チェック (GAS環境以外の場合)
@@ -137,23 +136,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         setupLoginHandlers(); // リトライ用などに常にセットアップ
 
+        // 認証済みの場合、即座にコンテナを表示 (読み込み中アニメーションを表示させるため)
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) {
+            appContainer.style.display = 'flex';
+        }
+
         // 1. まずキャッシュからマスタを読み込んでUIを構築
         loadMastersFromCache();
 
-        // 2. データをサーバーから取得して検証
-        await initSystem('all');
+        // 2. 必須データ（在庫・ホーム用）を最優先で取得
+        console.time('Essential Load');
+        if (typeof showToast === 'function') showToast('システムを起動しています...', 'success');
+        await initSystem('essential');
+        console.timeEnd('Essential Load');
+        if (typeof showToast === 'function') showToast('システムを起動しました', 'success');
 
-        // 認証とデータ取得が成功したら、メインUIを表示
-        const appContainer = document.querySelector('.app-container');
-        if (appContainer) {
-            appContainer.style.display = 'flex'; // style.cssの定義に合わせる
-        }
+        // 4. 残りの詳細履歴データをバックグラウンドで非同期に取得 (マスタは取得済みなのでスキップ)
+        initSystem('all', { skipMasters: true }).then(() => {
+            console.log("Background data load completed.");
+        }).catch(err => {
+            console.warn("Background load failed:", err);
+        });
 
         // ---- 3. Image Feature Initializations ----
         setupImagePreviewListeners();
         setupStockUpdateListeners();
         setupStockFilters();
-        setupScannerListeners();
 
         console.log("System initialization completed successfully.");
     } catch (error) {
@@ -175,10 +184,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     //* --- 利益・進捗バッジ --- */
 
-    async function initSystem(scope = 'all') {
-        console.log(`Fetching system init data (scope: ${scope})...`);
+    async function initSystem(scope = 'all', options = {}) {
+        console.log(`Fetching system init data (scope: ${scope}, skipMasters: ${options.skipMasters})...`);
         try {
-            const response = await fetchAPI('getInitData', { scope: scope });
+            const response = await fetchAPI('getInitData', { scope: scope, skipMasters: options.skipMasters });
             if (response.status === 'success') {
                 // マスタの処理（二次元配列をオブジェクトに変換）
                 const masters = {};
@@ -780,9 +789,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             errorMsg.style.display = 'none';
 
             try {
-                const hash = await hashPassword(password);
-                // 実際に通信して確認するために getInitData を呼んでみる
-                const bodyData = { action: 'getInitData', key: hash, scope: 'check' };
+                // バックエンドでハッシュ化を行うため、ここでは生のパスワードを送信
+                const bodyData = { action: 'getInitData', key: password, scope: 'check' };
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
                     body: JSON.stringify(bodyData)
@@ -792,12 +800,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 if (result.status === 'success') {
                     // 認証成功
-                    currentAuthKey = hash;
-                    localStorage.setItem('inventory_auth_key', hash);
+                    currentAuthKey = password;
+                    localStorage.setItem('inventory_auth_key', password);
                     document.getElementById('login-modal').style.display = 'none';
+                    
+                    // システムコンテナを表示（重要：ブランク画面回避）
+                    const appContainer = document.querySelector('.app-container');
+                    if (appContainer) {
+                        appContainer.style.display = 'flex';
+                    }
+
                     // システム初期化を再開
                     initSystem('all');
                 } else {
+                    errorMsg.textContent = result.message || 'パスワードが正しくありません';
                     errorMsg.style.display = 'block';
                 }
             } catch (e) {
@@ -1168,9 +1184,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const filtered = allStockProducts.filter(p => {
             const name = (p['品名'] || "").toLowerCase();
             const category = (p['カテゴリ'] || "").toLowerCase();
-            const id = (p['商品ID'] || "").toLowerCase();
-            const barcode = (p['QR/バーコード'] || "").toLowerCase();
-            const location = (p['保管場所'] || "").toLowerCase();
+            
+            // マスタからJANコードとIDを補完して検索対象にする
+            const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === p['品名']);
+            const id = ( (itemInMaster && itemInMaster['商品ID']) || p['商品ID'] || "").toLowerCase();
+            const barcode = ( (itemInMaster && itemInMaster['QR/バーコード']) || p['QR/バーコード'] || "").toLowerCase();
+            const location = (p['保管場所'] || (itemInMaster && itemInMaster['保管場所']) || "").toLowerCase();
+            
             const useFlag = parseInt(p['使用FLG']) !== 0;
             const threshold = parseFloat(p['閾値']) || 0;
             const stock = parseFloat(p['現在庫数']) || 0;
@@ -1719,9 +1739,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === itemName);
             const imageUrl = itemInMaster ? itemInMaster['画像URL'] : null;
-            const itemID = row['商品ID'] || '';
-            const location = row['保管場所'] || '';
-            const barcode = row['QR/バーコード'] || '';
+            const itemID = (itemInMaster && itemInMaster['商品ID']) || row['商品ID'] || '';
+            const location = row['保管場所'] || (itemInMaster && itemInMaster['保管場所']) || '';
+            const barcode = (itemInMaster && itemInMaster['QR/バーコード']) || row['QR/バーコード'] || '';
 
             card.setAttribute('data-item-name', itemName);
             card.setAttribute('data-item-id', itemID);
@@ -2048,6 +2068,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function startScanner() {
         const overlay = document.getElementById('scanner-overlay');
         overlay.style.display = 'flex';
+        
+        if (typeof showToast === 'function') showToast('カメラを起動しています...', 'info');
 
         if (!html5QrCode) {
             html5QrCode = new Html5Qrcode("reader");
@@ -2056,9 +2078,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
         html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .then(() => {
+                if (typeof showToast === 'function') showToast('スキャナーが起動しました', 'success');
+            })
             .catch(err => {
                 console.error("Scanner start error:", err);
-                alert("カメラの起動に失敗しました。カメラの使用を許可してください。");
+                const errorName = err.name || "";
+                let msg = "カメラの起動に失敗しました。";
+                if (errorName === "NotAllowedError") msg += "\nカメラの使用許可を確認してください。";
+                else if (errorName === "NotFoundError") msg += "\nカメラが見つかりません。";
+                else msg += "\n詳細: " + err;
+                
+                alert(msg);
                 overlay.style.display = 'none';
             });
     }
@@ -2083,41 +2114,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (searchInput) {
                 searchInput.value = loc;
                 searchInput.dispatchEvent(new Event('input')); // 検索実行
+                
+                // 在庫タブを表示
+                const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
+                if (invTabBtn) invTabBtn.click();
             }
             return;
         }
 
-        // 2. 商品ID、品名、またはバーコードでの照合
-        const cards = Array.from(document.querySelectorAll('.stock-item-card'));
-        const matches = cards.filter(card => {
-            const id = card.getAttribute('data-item-id');
-            const name = card.getAttribute('data-item-name');
-            const bc = card.getAttribute('data-barcode');
-            return id === decodedText || bc === decodedText || name === decodedText;
-        });
+        // 2. JANコードまたは商品IDを検索窓に入力して「在庫タブ」を表示
+        const searchInput = document.getElementById('stock-search-input');
+        if (searchInput) {
+            // 在庫タブに切り替え
+            const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
+            if (invTabBtn) invTabBtn.click();
 
-        if (matches.length === 1) {
-            // 一意に決まる場合：スクロール、ハイライト、入力フォーカス
-            const targetCard = matches[0];
-            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetCard.classList.add('scan-highlight');
-            setTimeout(() => targetCard.classList.remove('scan-highlight'), 1500);
+            // 検索窓に値をセット
+            searchInput.value = decodedText;
+            searchInput.dispatchEvent(new Event('input')); // 検索実行
 
-            const input = targetCard.querySelector('.stepper-input');
-            if (input) {
-                input.focus();
-                input.select();
-            }
-        } else if (matches.length > 1) {
-            // 重複する場合（同一JANコードなど）：一覧をその値で絞り込む
-            showToast(`${matches.length}件の商品がヒットしました。絞り込み表示します。`);
-            const searchInput = document.getElementById('stock-search-input');
-            if (searchInput) {
-                searchInput.value = decodedText;
-                searchInput.dispatchEvent(new Event('input')); // 検索実行
-            }
-        } else {
-            alert(`スキャン結果: "${decodedText}" に一致する商品は見つかりませんでした。`);
+            if (typeof showToast === 'function') showToast(`スキャン結果: ${decodedText} で検索しました`, 'success');
         }
     }
 
