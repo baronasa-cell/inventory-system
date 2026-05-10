@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '画像URL', visible: false, required: false },
-                { name: '保管場所', type: 'text', visible: true, editable: true, required: false },
+                { name: '保管場所', type: 'select', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: true, required: false },
                 { name: 'QR/バーコード', type: 'text', visible: true, editable: true, required: false }
             ]
         },
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '最終棚卸日', type: 'text', visible: true, editable: false, required: false },
                 { name: '商品ID', type: 'text', visible: true, editable: false, required: true }, 
-                { name: '保管場所', type: 'text', visible: true, editable: false, required: false },
+                { name: '保管場所', type: 'select', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: false, required: false },
                 { name: 'QR/バーコード', type: 'text', visible: true, editable: false, required: false }
             ]
         },
@@ -2134,17 +2134,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log(`Scan Result: ${decodedText}`);
         stopScanner();
 
-        // 1. 場所QRコードの判定 (LOC-XXXX)
+        // 1. 場所QRコードの判定 (LOC-XXXX, LOC:XXXX, または名称そのまま)
+        const locationOptions = [
+            '1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1',
+            '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2',
+            '7_押入下1：サブ2', '8_押入下2：部品箱'
+        ];
+        
+        let targetLoc = null;
         if (decodedText.startsWith('LOC-')) {
-            const loc = decodedText.replace('LOC-', '');
+            targetLoc = decodedText.replace('LOC-', '');
+        } else if (decodedText.startsWith('LOC:')) {
+            targetLoc = decodedText.replace('LOC:', '');
+        } else if (locationOptions.includes(decodedText)) {
+            targetLoc = decodedText;
+        }
+
+        if (targetLoc) {
             const searchInput = document.getElementById('stock-search-input');
             if (searchInput) {
-                searchInput.value = loc;
+                // 在庫タブを表示
+                const invTabBtn = document.querySelector('.nav-item[data-target="inventory"]');
+                if (invTabBtn) invTabBtn.click();
+
+                // 検索窓に値をセット
+                searchInput.value = targetLoc;
                 searchInput.dispatchEvent(new Event('input')); // 検索実行
                 
-                // 在庫タブを表示
-                const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
-                if (invTabBtn) invTabBtn.click();
+                if (typeof showToast === 'function') showToast(`場所「${targetLoc}」で絞り込みました`, 'success');
             }
             return;
         }
@@ -2153,7 +2170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const searchInput = document.getElementById('stock-search-input');
         if (searchInput) {
             // 在庫タブに切り替え
-            const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
+            const invTabBtn = document.querySelector('.nav-item[data-target="inventory"]');
             if (invTabBtn) invTabBtn.click();
 
             // 検索窓に値をセット
@@ -2871,8 +2888,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const profitYearHTML = isFY ? '' : getGrowthHTML(calcRate(current.profit, lastYear.profit), yearLabel);
 
             const pSales = current.personalSales || 0;
-            const salesTotalHTML = `¥${Math.round(current.sales).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:0.75em;color:var(--text-muted);">(¥${Math.round(current.sales + pSales).toLocaleString()})</span>` : ''}`;
-            const profitTotalHTML = `¥${Math.round(current.profit).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:0.75em;color:var(--text-muted);">(¥${Math.round(current.profit + pSales).toLocaleString()})</span>` : ''}`;
+            const salesTotalHTML = `¥${Math.round(current.sales).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:12px;color:var(--text-muted);">(¥${Math.round(current.sales + pSales).toLocaleString()})</span>` : ''}`;
+            const profitTotalHTML = `¥${Math.round(current.profit).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:12px;color:var(--text-muted);">(¥${Math.round(current.profit + pSales).toLocaleString()})</span>` : ''}`;
 
             summaryCards.innerHTML = `
                 <div class="mini-summary-card income">
