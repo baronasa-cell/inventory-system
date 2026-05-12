@@ -319,7 +319,10 @@ function registerTransaction(sheetName, data, scope = 'all') {
         return val;
     }
     
-    if (h === '単価' && data.price !== undefined && data.quantity) return roundTo2dp(data.price / data.quantity);
+    if (h === '単価' && data.price !== undefined && data.quantity) {
+      const qty = parseFloat(data.quantity) || 0;
+      return qty > 0 ? roundTo2dp(data.price / qty) : 0;
+    }
     if (h === '最終更新日') return data.updatedAt || new Date();
     
     return "";
@@ -641,7 +644,9 @@ function handleStatusLogic(sheetName, id, status, currentData) {
     const qty = parseFloat(currentData['数量']) || 0;
     
     const productMaster = SS.getSheetByName('M_商品').getDataRange().getValues();
-    const productExists = productMaster.slice(1).some(r => r[1] === productName);
+    const pHeaders = productMaster[0].map(h => h.toString().trim());
+    const nameIdx = pHeaders.indexOf('品名');
+    const productExists = nameIdx !== -1 ? productMaster.slice(1).some(r => r[nameIdx] === productName) : false;
     
     let unitCost = 0;
     if (isPersonal && !productExists) {
@@ -661,7 +666,7 @@ function handleStatusLogic(sheetName, id, status, currentData) {
     
     const shippingMethod = currentData['発送方法'];
     if (shippingMethod) {
-      const shippingExists = productMaster.slice(1).some(r => r[1] === shippingMethod);
+      const shippingExists = nameIdx !== -1 ? productMaster.slice(1).some(r => r[nameIdx] === shippingMethod) : false;
       if (shippingExists) {
         try {
           processFIFO(id, '販売出庫(梱包)', shippingMethod, 1);
@@ -817,11 +822,12 @@ function recordInventory(refId, type, itemName, qty, unitPrice, vendorName = "",
   const pSheet = SS.getSheetByName('M_商品');
   const pData = pSheet.getDataRange().getValues();
   const pHeaders = pData[0].map(h => h.toString().trim());
-  const pRow = pData.slice(1).find(r => r[1] === itemName);
-  const catIdx = pHeaders.indexOf('カテゴリ') !== -1 ? pHeaders.indexOf('カテゴリ') : 2;
+  const nameIdx = pHeaders.indexOf('品名');
+  const catIdx = pHeaders.indexOf('カテゴリ');
+  const pRow = nameIdx !== -1 ? pData.slice(1).find(r => r[nameIdx] === itemName) : null;
   
   // forceCategoryがあれば優先、なければマスタから取得
-  const category = forceCategory || (pRow ? pRow[catIdx] : ""); 
+  const category = forceCategory || (pRow && catIdx !== -1 ? pRow[catIdx] : ""); 
 
   const rowObj = {
     '在庫管理ID': newId,
@@ -856,14 +862,18 @@ function syncToLedger(sheetName, id, data) {
   
   let row = new Array(headers.length).fill("");
   
+  const dateCol = headers.indexOf('日付');
+  const descCol = headers.indexOf('摘要');
+  const incomeCol = headers.indexOf('収入');
+  const costCol = headers.indexOf('支出');
+
   // 帳簿の日付決定ロジックの適正化
-  // 優先順位: 1.入力された完了日, 2.本日 (開始日や注文日には遡らない)
   if (sheetName === 'T_販売') {
-    row[0] = data['取引完了日'] || new Date();
+    if (dateCol !== -1) row[dateCol] = data['取引完了日'] || new Date();
   } else if (sheetName === 'T_経費') {
-    row[0] = data['完了日'] || new Date();
+    if (dateCol !== -1) row[dateCol] = data['完了日'] || new Date();
   } else {
-    row[0] = new Date(); 
+    if (dateCol !== -1) row[dateCol] = new Date(); 
   }
   
   const price = parseFloat(data['合計金額'] || data['価格'] || data['販売価格'] || 0);
@@ -871,10 +881,10 @@ function syncToLedger(sheetName, id, data) {
   if (sheetName === 'T_販売') {
     const buyer = data['売先'] || "";
     const item = data['品名'] || "";
-    row[1] = buyer ? `${buyer} ${item}` : item; // 売先 + 品名
+    if (descCol !== -1) row[descCol] = buyer ? `${buyer} ${item}` : item; // 売先 + 品名
     
-    row[2] = price; // 売上
-    row[3] = parseFloat(data['合計単価']) || 0; // 仕入（原価）
+    if (incomeCol !== -1) row[incomeCol] = price; // 売上
+    if (costCol !== -1) row[costCol] = parseFloat(data['合計単価']) || 0; // 仕入（原価）
     
     const commFeeCol = headers.indexOf('通信費');
     if (commFeeCol !== -1) {
@@ -889,13 +899,16 @@ function syncToLedger(sheetName, id, data) {
     const account = data['仕訳']; 
     const qty = parseFloat(data['数量']) || 0;
     const itemName = data['品名'] || "";
-    row[1] = (account ? account + " " : "") + itemName + (qty > 1 ? "×" + qty : "");
+    if (descCol !== -1) row[descCol] = (account ? account + " " : "") + itemName + (qty > 1 ? "×" + qty : "");
 
     const colIndex = headers.indexOf(account);
-    if (colIndex >= 4) { 
+    if (colIndex !== -1 && colIndex >= 4) { 
       row[colIndex] = price;
     } else {
-      row[9] = price; 
+      // 指定された仕訳が見つからない場合のフォールバック（雑費列などがあればそこへ、なければ最後の方へ）
+      const miscCol = headers.indexOf('雑費');
+      const targetCol = miscCol !== -1 ? miscCol : (headers.length > 9 ? 9 : headers.length - 1);
+      row[targetCol] = price; 
     }
   }
 
@@ -944,18 +957,22 @@ function updateInventorySummary() {
   const existingNames = new Set();
   const pData = getSheetDataAsObjects('M_商品');
 
+  const sNameCol = sumHeaders.indexOf('品名');
+  const sQtyCol = sumHeaders.indexOf('現在庫数');
+  const sUpdateCol = sumHeaders.indexOf('最終更新日');
+
   // 既存行の更新 (ピンポイント更新)
   for (let i = 1; i < sumData.length; i++) {
-    const name = sumData[i][2]; // A:優先度, B:表示順, C:品名(2)
+    const name = sNameCol !== -1 ? sumData[i][sNameCol] : null; 
     if (!name) continue;
     existingNames.add(name);
     
     if (summary[name] !== undefined) {
-      const currentQty = parseFloat(sumData[i][4]) || 0; // E列(4)
+      const currentQty = sQtyCol !== -1 ? (parseFloat(sumData[i][sQtyCol]) || 0) : 0;
       const newQty = summary[name];
       if (currentQty !== newQty) {
-        sumSheet.getRange(i + 1, 5).setValue(newQty); // E列(5)
-        sumSheet.getRange(i + 1, 7).setValue(new Date()); // G列(7)
+        if (sQtyCol !== -1) sumSheet.getRange(i + 1, sQtyCol + 1).setValue(newQty);
+        if (sUpdateCol !== -1) sumSheet.getRange(i + 1, sUpdateCol + 1).setValue(new Date());
       }
     }
   }
@@ -968,15 +985,20 @@ function updateInventorySummary() {
       const useFlag = pRow ? (parseInt(pRow['使用FLG']) === 0 ? 0 : 1) : 1; 
 
       const newRow = new Array(sumHeaders.length).fill("");
-      newRow[0] = 9;    // A列: 優先度 (1〜9: 1が最優先)
-      newRow[1] = (sumData.length * 10); // B列: 表示順 (行数ベースで10刻み)
-      newRow[2] = name; // C列: 品名
-      newRow[3] = cat;  // D列: カテゴリ
-      newRow[4] = summary[name]; // E列: 現在庫数
-      newRow[5] = 10;   // F列: 閾値
-      newRow[6] = new Date(); // G列: 最終更新日
-      newRow[7] = useFlag;    // H列: 使用FLG
-      newRow[8] = "";   // I列: 最終棚卸日
+      const setCol = (name, val) => {
+        const idx = sumHeaders.indexOf(name);
+        if (idx !== -1) newRow[idx] = val;
+      };
+
+      setCol('優先度', 9);
+      setCol('表示順', (sumData.length * 10));
+      setCol('品名', name);
+      setCol('カテゴリ', cat);
+      setCol('現在庫数', summary[name]);
+      setCol('閾値', 10);
+      setCol('最終更新日', new Date());
+      setCol('使用FLG', useFlag);
+      setCol('最終棚卸日', "");
 
       sumSheet.appendRow(newRow);
     }
@@ -1338,10 +1360,19 @@ function revertFIFO(triggerId, type) {
 function updateStockThreshold(itemName, newThreshold) {
   const sheet = SS.getSheetByName('T_在庫集計');
   const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => h.toString().trim());
+  const nameCol = headers.indexOf('品名');
+  const thresholdCol = headers.indexOf('閾値');
+  const updateCol = headers.indexOf('最終更新日');
+
+  if (nameCol === -1 || thresholdCol === -1) {
+    return { status: 'error', message: 'Required columns not found in summary' };
+  }
+
   for (let i = 1; i < data.length; i++) {
-    if (data[i][2] === itemName) { // C列が品名
-      sheet.getRange(i + 1, 6).setValue(newThreshold); // F列(6)
-      sheet.getRange(i + 1, 7).setValue(new Date());   // G列(7)
+    if (data[i][nameCol] === itemName) {
+      sheet.getRange(i + 1, thresholdCol + 1).setValue(newThreshold);
+      if (updateCol !== -1) sheet.getRange(i + 1, updateCol + 1).setValue(new Date());
       return { status: 'success' };
     }
   }
@@ -1351,10 +1382,19 @@ function updateStockThreshold(itemName, newThreshold) {
 function updateStockItemStatus(itemName, newStatus) {
   const sheet = SS.getSheetByName('T_在庫集計');
   const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => h.toString().trim());
+  const nameCol = headers.indexOf('品名');
+  const flagCol = headers.indexOf('使用FLG');
+  const updateCol = headers.indexOf('最終更新日');
+
+  if (nameCol === -1 || flagCol === -1) {
+    return { status: 'error', message: 'Required columns not found in summary' };
+  }
+
   for (let i = 1; i < data.length; i++) {
-    if (data[i][2] === itemName) { // C列が品名
-      sheet.getRange(i + 1, 8).setValue(newStatus); // H列(8)
-      sheet.getRange(i + 1, 7).setValue(new Date()); // G列(7)
+    if (data[i][nameCol] === itemName) {
+      sheet.getRange(i + 1, flagCol + 1).setValue(newStatus);
+      if (updateCol !== -1) sheet.getRange(i + 1, updateCol + 1).setValue(new Date());
       return { status: 'success' };
     }
   }
@@ -1368,19 +1408,23 @@ function updateStockBulk(thresholdUpdates, statusUpdates) {
     const headers = data[0];
     const now = new Date();
     
-    // アイテム名を行インデックスのマップに変換
     const itemMap = {};
+    const nameCol = headers.indexOf('品名');
+    if (nameCol === -1) throw new Error('品名列が見つかりません');
+    
     for (let i = 1; i < data.length; i++) {
-      if (data[i][2]) itemMap[data[i][2]] = i + 1; // C列
+      if (data[i][nameCol]) itemMap[data[i][nameCol]] = i + 1;
     }
     
     // 閾値の更新
     if (thresholdUpdates) {
+      const thresholdCol = headers.indexOf('閾値');
+      const updateCol = headers.indexOf('最終更新日');
       for (const itemName in thresholdUpdates) {
         const rowIdx = itemMap[itemName];
-        if (rowIdx) {
-          sheet.getRange(rowIdx, 6).setValue(thresholdUpdates[itemName]); // F列(6)
-          sheet.getRange(rowIdx, 7).setValue(now); // G列(7)
+        if (rowIdx && thresholdCol !== -1) {
+          sheet.getRange(rowIdx, thresholdCol + 1).setValue(thresholdUpdates[itemName]);
+          if (updateCol !== -1) sheet.getRange(rowIdx, updateCol + 1).setValue(now);
         }
       }
     }
@@ -1712,8 +1756,11 @@ function processSurplusAdjustment(adj, adjId, timestamp, dateOnly) {
   // マスタからカテゴリ取得（recordInventory関数と同じ方式）
   const pSheet = SS.getSheetByName('M_商品');
   const pData = pSheet ? pSheet.getDataRange().getValues() : [];
-  const pRow = pData.slice(1).find(r => r[1] === adj.itemName);
-  const category = pRow ? (pRow[2] || "") : "";
+  const pHeaders = pData.length > 0 ? pData[0].map(h => h.toString().trim()) : [];
+  const nameIdx = pHeaders.indexOf('品名');
+  const catIdx = pHeaders.indexOf('カテゴリ');
+  const pRow = (nameIdx !== -1) ? pData.slice(1).find(r => r[nameIdx] === adj.itemName) : null;
+  const category = (pRow && catIdx !== -1) ? (pRow[catIdx] || "") : "";
 
   // 最新単価とその元在庫管理IDの取得
   let latestPrice = 0;
@@ -1800,8 +1847,11 @@ function processShortageAdjustment(adj, adjId, timestamp, dateOnly) {
   // マスタからカテゴリ取得
   const pSheet = SS.getSheetByName('M_商品');
   const pData = pSheet ? pSheet.getDataRange().getValues() : [];
-  const pRow = pData.slice(1).find(r => r[1] === adj.itemName);
-  const category = pRow ? (pRow[2] || "") : "";
+  const pHeaders = pData.length > 0 ? pData[0].map(h => h.toString().trim()) : [];
+  const nameIdx = pHeaders.indexOf('品名');
+  const catIdx = pHeaders.indexOf('カテゴリ');
+  const pRow = (nameIdx !== -1) ? pData.slice(1).find(r => r[nameIdx] === adj.itemName) : null;
+  const category = (pRow && catIdx !== -1) ? (pRow[catIdx] || "") : "";
 
   // 調整行（証拠）の追加
   adjustments.forEach(item => {
@@ -1886,7 +1936,8 @@ function updateMasterRecord(masterName, id, updates) {
           updateStockItemStatus(itemName, newStatus);
         }
       } else if (masterName === 'T_在庫集計') {
-        const itemName = data[rowIndex][2]; // T_在庫集計の品名はC列(2)
+        const nameCol = headers.indexOf('品名');
+        const itemName = (nameCol !== -1) ? data[rowIndex][nameCol] : null; 
         const pSheet = SS.getSheetByName('M_商品');
         if (pSheet) {
           const pData = pSheet.getDataRange().getValues();
