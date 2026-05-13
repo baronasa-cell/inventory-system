@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '商品ID', type: 'text', visible: true, editable: false, required: true },
                 { name: '表示順', type: 'number', visible: true, editable: true, required: true },
                 { name: '品名', type: 'text', visible: true, editable: false, required: true },
-                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', '単体商品', '商品', '経費', '製造'], required: true },
+                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', 'パーツ2', '単体商品', '商品', '経費'], required: true },
                 { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '画像URL', visible: false, required: false },
@@ -3933,9 +3933,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const category = product ? product['カテゴリ'] : "";
 
             const isMade = (category === '商品' || category === 'パーツ2');
-            const actionBtn = isMade ?
-                `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${itemName}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>` :
-                `<button class="alert-btn purchase" onclick="jumpToTab('purchase', '${itemName}')"><ion-icon name="cart-outline"></ion-icon>仕入へ</button>`;
+            const isExpense = (category === '経費');
+            
+            let actionBtn = '';
+            if (isMade) {
+                actionBtn = `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${itemName}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>`;
+            } else if (isExpense) {
+                actionBtn = `<button class="alert-btn expense" onclick="jumpToTab('expense', '${itemName}')"><ion-icon name="cash-outline"></ion-icon>経費へ</button>`;
+            } else {
+                actionBtn = `<button class="alert-btn purchase" onclick="jumpToTab('purchase', '${itemName}')"><ion-icon name="cart-outline"></ion-icon>仕入へ</button>`;
+            }
 
             html += `
                 <div class="alert-card ${cardClass}">
@@ -3969,7 +3976,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // タブ切り替えのアニメーション待ち
             setTimeout(() => {
-                const map = { purchase: 'buy-item', manufacturing: 'make-item' };
+                const map = { purchase: 'buy-item', manufacturing: 'make-item', expense: 'exp-item' };
                 const el = document.getElementById(map[tabId]);
                 if (el) {
                     el.value = itemName;

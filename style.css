@@ -3116,6 +3116,11 @@ input:checked + .slider:before {
     color: var(--dark-green);
 }
 
+.alert-btn.expense {
+    background: rgba(239, 68, 68, 0.08);
+    color: #dc2626;
+}
+
 .alert-btn:active {
     transform: scale(0.92);
 }
