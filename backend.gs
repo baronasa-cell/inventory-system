@@ -140,6 +140,9 @@ function handleRequest(p) {
       case 'registerTransaction':
         result = registerTransaction(p.sheet, p.data, p.scope);
         break;
+      case 'registerBulk':
+        result = registerBulkTransactions(p.transactions, p.scope);
+        break;
       case 'updateTransaction':
         result = updateTransaction(p.id, p.updates, p.scope);
         break;
@@ -341,6 +344,39 @@ function registerTransaction(sheetName, data, scope = 'all') {
     id: idValue, 
     masterAdded: masterAdded, 
     historyData: fetchHistoryData(scope) 
+  };
+}
+
+/**
+ * 複数取引の一括登録処理 (Proposal 38)
+ */
+function registerBulkTransactions(transactions, scope = 'all') {
+  if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+    throw new Error("登録対象のデータがありません");
+  }
+
+  const results = [];
+  let totalMasterAdded = false;
+
+  // 各データを順次登録
+  for (const tx of transactions) {
+    // tx: { type: 'purchase'|'expense', data: {...} }
+    const sheetName = tx.type === 'purchase' ? 'T_仕入' : 'T_経費';
+    try {
+      const res = registerTransaction(sheetName, tx.data, 'none'); // ここでは履歴取得をスキップ
+      results.push({ id: res.id, status: 'success' });
+      if (res.masterAdded) totalMasterAdded = true;
+    } catch (e) {
+      results.push({ status: 'error', message: e.toString() });
+      console.error('Bulk item error:', e.toString());
+    }
+  }
+
+  return {
+    status: 'success',
+    results: results,
+    masterAdded: totalMasterAdded,
+    historyData: fetchHistoryData(scope) // 最後に一括で最新履歴を返す
   };
 }
 
