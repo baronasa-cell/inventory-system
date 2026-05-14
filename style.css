@@ -3267,16 +3267,23 @@ input:checked + .slider:before {
 
 .search-bar.mini {
     margin-bottom: 0;
-    padding: 0 12px;
-    height: 34px; /* 40pxから短縮 */
+    padding: 0 8px;
+    height: 28px; /* 34pxからさらに短縮 */
     flex: 1;
     min-width: 0;
-    border-radius: 10px; /* 角丸を少し抑える */
+    border-radius: 6px;
+    box-shadow: none; /* 影を消してフラットに */
+    background: rgba(0,0,0,0.04); /* 薄い背景のみ */
+}
+
+.search-bar.mini ion-icon {
+    font-size: 14px; /* アイコンも小さく */
 }
 
 .search-bar.mini input {
-    padding: 4px 8px; /* パディングを大幅に削減 */
-    font-size: 13px;  /* 文字サイズを少し小さく */
+    padding: 0 6px; /* パディングをほぼゼロに */
+    font-size: 13px;
+    height: 100%;
 }
 
 .mini-btn {
