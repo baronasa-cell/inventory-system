@@ -3268,9 +3268,15 @@ input:checked + .slider:before {
 .search-bar.mini {
     margin-bottom: 0;
     padding: 0 12px;
-    height: 40px;
+    height: 34px; /* 40pxから短縮 */
     flex: 1;
-    min-width: 0; /* flexアイテムの縮小を許可 */
+    min-width: 0;
+    border-radius: 10px; /* 角丸を少し抑える */
+}
+
+.search-bar.mini input {
+    padding: 4px 8px; /* パディングを大幅に削減 */
+    font-size: 13px;  /* 文字サイズを少し小さく */
 }
 
 .mini-btn {
@@ -3397,11 +3403,11 @@ th.sticky-col {
 }
 
 .quick-search-item {
-    padding: 14px 16px;
+    padding: 10px 16px; /* 14pxから短縮 */
     background: #fff;
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid rgba(0,0,0,0.05);
-    font-size: 14px;
+    font-size: 13px; /* 14pxから微減 */
     font-weight: 600;
     color: var(--text-main);
     cursor: pointer;
