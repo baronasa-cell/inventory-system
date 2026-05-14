@@ -5052,7 +5052,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setLoading(true, "一括登録中...");
         try {
-            const result = await callApi('registerBulk', { 
+            // fetchAPI が正しい関数名
+            const result = await fetchAPI('registerBulk', { 
                 transactions: window.registrationBasket,
                 scope: 'all'
             });
@@ -5073,8 +5074,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 
                 // フォームをリセット（共通項目も含む）
-                document.getElementById('buy-vendor').value = "";
-                document.getElementById('exp-vendor').value = "";
+                const buyVendor = document.getElementById('buy-vendor');
+                if (buyVendor) buyVendor.value = "";
+                const expVendor = document.getElementById('exp-vendor');
+                if (expVendor) expVendor.value = "";
             } else {
                 alert("登録エラー: " + result.message);
             }
