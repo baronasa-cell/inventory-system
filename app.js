@@ -5052,25 +5052,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setLoading(true, "一括登録中...");
         try {
-            // fetchAPI が正しい関数名
             const result = await fetchAPI('registerBulk', { 
                 transactions: window.registrationBasket,
                 scope: 'all'
             });
 
             if (result.status === 'success') {
-                alert("一括登録が完了しました。");
+                showToast("一括登録が完了しました。");
                 window.registrationBasket = [];
                 renderBasket();
                 
-                // 履歴データの更新
-                if (result.historyData) {
-                    window.lastHistoryData = result.historyData;
-                    renderHistoryData();
-                    updateUIWithNewData();
+                // 履歴・在庫データの更新フローを既存処理(handleSubmission)と同期
+                if (result.historyData && result.historyData.rawData) {
+                    // 生データをマージ
+                    lastRawData = Object.assign({}, lastRawData, result.historyData.rawData);
+                    // データを加工・再集計
+                    const processed = processClientData(lastRawData);
+                    lastHistoryData = processed;
+                    // 各履歴画面を描画
+                    renderAllHistory(processed);
+                    // 在庫一覧UIを更新
+                    refreshInventoryUI();
                 }
+
+                // 新規マスタ追加があった場合
                 if (result.masterAdded) {
-                    refreshMasters();
+                    initSystem();
                 }
                 
                 // フォームをリセット（共通項目も含む）
@@ -5078,11 +5085,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (buyVendor) buyVendor.value = "";
                 const expVendor = document.getElementById('exp-vendor');
                 if (expVendor) expVendor.value = "";
+                
             } else {
-                alert("登録エラー: " + result.message);
+                showToast("登録エラー: " + result.message, 'error');
             }
         } catch (e) {
-            alert("通信エラー: " + e.toString());
+            console.error(e);
+            showToast("通信エラー: " + e.toString(), 'error');
         } finally {
             setLoading(false);
         }
