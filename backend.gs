@@ -173,6 +173,9 @@ function handleRequest(p) {
       case 'addMaterialToManufacturing':
         result = addMaterialToManufacturing(p.manufacturingId, p.item, p.quantity, p.reason);
         break;
+      case 'rebuildInventorySummary':
+        result = rebuildInventorySummary();
+        break;
     }
 
     return result;
@@ -399,8 +402,8 @@ function updateTransaction(id, updates, scope = 'all') {
 
   const headers = data[0];
   const statusColIndex = headers.indexOf('ステータス');
-  const oldStatus = data[rowIndex][statusColIndex];
-  const newStatus = updates.status;
+  const oldStatus = String(data[rowIndex][statusColIndex] || "").trim();
+  const newStatus = updates.status ? String(updates.status).trim() : null;
 
   if (newStatus) {
     sheet.getRange(rowIndex + 1, statusColIndex + 1).setValue(newStatus);
@@ -450,7 +453,7 @@ function updateTransaction(id, updates, scope = 'all') {
 
   if (oldStatus !== newStatus) {
     const updatedRow = getRowAsObject(sheet, rowIndex + 1);
-    handleStatusLogic(sheetName, id, newStatus, updatedRow);
+    handleStatusLogic(sheetName, id, newStatus, updatedRow, oldStatus);
   }
   
   if (sheetName === 'T_経費') formatColumn(sheet, rowIndex + 1, '単価', '0.00');
@@ -643,101 +646,120 @@ const StockManager = {
 /**
  * ビジネスロジックの発火点
  */
-function handleStatusLogic(sheetName, id, status, currentData) {
+function handleStatusLogic(sheetName, id, status, currentData, oldStatus = null) {
   StockManager.init(); // 在庫管理シートを一括メモリ読み込み
 
-  if (sheetName === 'T_仕入' && (status === '入庫済み' || status === '入庫済' || status === '完了')) {
-    recordInventory(id, '仕入入庫', currentData['品名'], currentData['数量'], currentData['単価'] || (currentData['価格']/currentData['数量']) || 0, currentData['仕入先']);
-  }
-  
-  if (sheetName === 'T_製造' && status === '製造開始') {
-    const makeQty = parseFloat(currentData['数量']) || 0;
-    const itemName = currentData['品名'];
-    const totalMaterialCost = processManufacturingBOM(id, itemName, makeQty);
-    
-    if (makeQty > 0) {
-      const unitCost = roundTo2dp(totalMaterialCost / makeQty);
-      const sheet = SS.getSheetByName('T_製造');
-      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
-      const colIdx = headers.indexOf('単価');
-      const data = sheet.getDataRange().getValues();
-      const rowIdx = data.findIndex(r => r[0] === id);
-      if (rowIdx !== -1 && colIdx !== -1) {
-        sheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
-        formatColumn(sheet, rowIdx + 1, '単価', '0.00');
-      }
+  if (sheetName === 'T_仕入') {
+    const triggerStatuses = ['入庫済み', '入庫済', '完了'];
+    const isNowTrigger = triggerStatuses.includes(String(status || "").trim());
+    const wasTrigger = oldStatus ? triggerStatuses.includes(String(oldStatus).trim()) : false;
+    if (isNowTrigger && !wasTrigger) {
+      recordInventory(id, '仕入入庫', currentData['品名'], currentData['数量'], currentData['単価'] || (currentData['価格']/currentData['数量']) || 0, currentData['仕入先']);
     }
   }
   
-  if (sheetName === 'T_製造' && status === '完了') {
-    const unitCost = parseFloat(currentData['単価']) || 0;
-    recordInventory(id, '製造入庫', currentData['品名'], currentData['数量'], unitCost, '自社');
-  }
-
-  if (sheetName === 'T_販売' && (status === '取引開始' || status === '入金待ち')) {
-    const isPersonal = currentData['管理対象外'] == 1 || currentData['管理区分'] == 1;
-    const productName = currentData['品名'];
-    const qty = parseFloat(currentData['数量']) || 0;
-    
-    const productMaster = SS.getSheetByName('M_商品').getDataRange().getValues();
-    const pHeaders = productMaster[0].map(h => h.toString().trim());
-    const nameIdx = pHeaders.indexOf('品名');
-    const productExists = nameIdx !== -1 ? productMaster.slice(1).some(r => r[nameIdx] === productName) : false;
-    
-    let unitCost = 0;
-    if (isPersonal && !productExists) {
-      unitCost = 0; 
-    } else {
-      try {
-        const totalCost = processFIFO(id, '販売出庫', productName, qty);
-        unitCost = qty > 0 ? roundTo2dp(totalCost / qty) : 0;
-      } catch (e) {
-        if (isPersonal) {
-          unitCost = 0; 
-        } else {
-          throw e; 
+  if (sheetName === 'T_製造') {
+    const s = String(status || "").trim();
+    const os = String(oldStatus || "").trim();
+    if (s === '製造開始' && os !== '製造開始') {
+      const makeQty = parseFloat(currentData['数量']) || 0;
+      const itemName = currentData['品名'];
+      const totalMaterialCost = processManufacturingBOM(id, itemName, makeQty);
+      
+      if (makeQty > 0) {
+        const unitCost = roundTo2dp(totalMaterialCost / makeQty);
+        const sheet = SS.getSheetByName('T_製造');
+        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+        const colIdx = headers.indexOf('単価');
+        const data = sheet.getDataRange().getValues();
+        const rowIdx = data.findIndex(r => r[0] === id);
+        if (rowIdx !== -1 && colIdx !== -1) {
+          sheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
+          formatColumn(sheet, rowIdx + 1, '単価', '0.00');
         }
       }
     }
     
-    const shippingMethod = currentData['発送方法'];
-    if (shippingMethod) {
-      const shippingExists = nameIdx !== -1 ? productMaster.slice(1).some(r => r[nameIdx] === shippingMethod) : false;
-      if (shippingExists) {
+    if (s === '完了' && os !== '完了') {
+      const unitCost = parseFloat(currentData['単価']) || 0;
+      recordInventory(id, '製造入庫', currentData['品名'], currentData['数量'], unitCost, '自社');
+    }
+  }
+
+  if (sheetName === 'T_販売') {
+    const s = String(status || "").trim();
+    const os = String(oldStatus || "").trim();
+    const triggerStatuses = ['取引開始', '入金待ち', '受注', '開始'];
+    const isNowTrigger = triggerStatuses.includes(s);
+    const wasTrigger = triggerStatuses.includes(os);
+    
+    if (isNowTrigger && !wasTrigger) {
+      const isPersonal = currentData['管理対象外'] == 1 || currentData['管理区分'] == 1;
+      const productName = currentData['品名'];
+      const qty = parseFloat(currentData['数量']) || 0;
+      
+      const productMaster = SS.getSheetByName('M_商品').getDataRange().getValues();
+      const pHeaders = productMaster[0].map(h => h.toString().trim());
+      const nameIdx = pHeaders.indexOf('品名');
+      const productExists = nameIdx !== -1 ? productMaster.slice(1).some(r => r[nameIdx] === productName) : false;
+      
+      let unitCost = 0;
+      if (isPersonal && !productExists) {
+        unitCost = 0; 
+      } else {
         try {
-          processFIFO(id, '販売出庫(梱包)', shippingMethod, 1);
+          const totalCost = processFIFO(id, '販売出庫', productName, qty);
+          unitCost = qty > 0 ? roundTo2dp(totalCost / qty) : 0;
         } catch (e) {
-          throw new Error('梱包材の引当エラー: ' + e.message);
+          if (isPersonal) {
+            unitCost = 0; 
+          } else {
+            throw e; 
+          }
         }
       }
-    }
-    
-    const saleSheet = SS.getSheetByName('T_販売');
-    const sHeaders = saleSheet.getRange(1, 1, 1, saleSheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
-    const sData = saleSheet.getDataRange().getValues();
-    const rowIdx = sData.findIndex(r => r[0] === id);
-    if (rowIdx !== -1) {
-      const colIdx = sHeaders.indexOf('合計単価');
-      if (colIdx !== -1) {
-          saleSheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
-          formatColumn(saleSheet, rowIdx + 1, '合計単価', '0.00');
+      
+      const shippingMethod = currentData['発送方法'];
+      if (shippingMethod) {
+        const shippingExists = nameIdx !== -1 ? productMaster.slice(1).some(r => r[nameIdx] === shippingMethod) : false;
+        if (shippingExists) {
+          try {
+            processFIFO(id, '販売出庫(梱包)', shippingMethod, 1);
+          } catch (e) {
+            throw new Error('梱包材の引当エラー: ' + e.message);
+          }
+        }
+      }
+      
+      const saleSheet = SS.getSheetByName('T_販売');
+      const sHeaders = saleSheet.getRange(1, 1, 1, saleSheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+      const sData = saleSheet.getDataRange().getValues();
+      const rowIdx = sData.findIndex(r => r[0] === id);
+      if (rowIdx !== -1) {
+        const colIdx = sHeaders.indexOf('合計単価');
+        if (colIdx !== -1) {
+            saleSheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
+            formatColumn(saleSheet, rowIdx + 1, '合計単価', '0.00');
+        }
       }
     }
   }
 
-  if (sheetName === 'T_経費' && status === '完了') {
-    if (currentData['管理対象'] == 1) { 
-       const qty = parseFloat(currentData['数量']) || 1;
-       const price = parseFloat(currentData['合計金額']) || 0;
-       // 処理ルールに基づき、商品区分に「経費」を強制指定
-       recordInventory(id, '経費入庫', currentData['品名'], qty, price / qty, currentData['購入先'], '経費');
+  if (sheetName === 'T_経費') {
+    const s = String(status || "").trim();
+    const os = String(oldStatus || "").trim();
+    if (s === '完了' && os !== '完了') {
+      if (currentData['管理対象'] == 1) { 
+         const qty = parseFloat(currentData['数量']) || 1;
+         const price = parseFloat(currentData['合計金額']) || 0;
+         // 処理ルールに基づき、商品区分に「経費」を強制指定
+         recordInventory(id, '経費入庫', currentData['品名'], qty, price / qty, currentData['購入先'], '経費');
+      }
     }
   }
   
   if (status === 'キャンセル') {
-    if (sheetName === 'T_製造' || sheetName === 'T_販売') {
-      revertFIFO(id, '取消入庫');
-    }
+    revertFIFO(id);
   }
 
   if (status === '完了') {
@@ -770,6 +792,22 @@ function appendInventoryRow(stockSheet, rowDataObj) {
 function processFIFO(triggerId, type, itemName, demandQty) {
   const data = StockManager.data;
   const headers = StockManager.headers;
+
+  // 重要: すでに同じ取引IDかつ同じ区分での引当が存在する場合はスキップ（二重引当の物理防止）
+  if (triggerId) {
+    const prefix = triggerId.substring(0, 1);
+    const idColName = (prefix === 'P' || prefix === 'E') ? '仕入ID' : (prefix === 'M' ? '製造ID' : '販売ID');
+    const idColIdx = headers.indexOf(idColName);
+    const typeColIdx = headers.indexOf('区分');
+    if (idColIdx !== -1 && typeColIdx !== -1) {
+      const alreadyExists = data.some(r => r[idColIdx] === triggerId && r[typeColIdx] === type);
+      if (alreadyExists) {
+        console.log('Skipping duplicate processFIFO for: ' + triggerId + ' / ' + type);
+        return 0; 
+      }
+    }
+  }
+
   const fCol = headers.indexOf('実在庫数量');
   const dCol = headers.indexOf('入出庫日');
   
@@ -835,6 +873,92 @@ function processFIFO(triggerId, type, itemName, demandQty) {
   }
   
   return totalCost;
+}
+
+/**
+ * 在庫処理の取り消し (FIFOの逆操作)
+ */
+function revertFIFO(triggerId) {
+  const data = StockManager.data;
+  const headers = StockManager.headers;
+  const invIdCol = headers.indexOf('在庫管理ID');
+  const triggerIdCol = headers.indexOf(triggerId.startsWith('P') ? '仕入ID' : (triggerId.startsWith('E') ? '仕入ID' : (triggerId.startsWith('M') ? '製造ID' : '販売ID')));
+  const nameCol = headers.indexOf('品名');
+  const qtyCol = headers.indexOf('数量');
+  const actualQtyCol = headers.indexOf('実在庫数量');
+  const priceCol = headers.indexOf('単価');
+  const sourceIdCol = headers.indexOf('引当元管理ID');
+  const statusCol = headers.indexOf('引当完了');
+
+  // 1. 指定された取引IDに関連する在庫レコードをすべて探す
+  const relatedRows = [];
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][triggerIdCol] === triggerId) {
+      relatedRows.push({ index: i, row: data[i] });
+    }
+  }
+
+  relatedRows.forEach(item => {
+    const row = item.row;
+    const qty = parseFloat(row[qtyCol]) || 0;
+    const itemName = row[nameCol];
+    const unitPrice = parseFloat(row[priceCol]) || 0;
+    const sourceId = row[sourceIdCol];
+
+    if (qty > 0) {
+      // ケースA: 入庫の取り消し (仕入や製造完了のキャンセル)
+      // -> 「取消出庫」レコードを作成し、実在庫を0にする
+      const newId = StockManager.getNextInvId();
+      const cancelRow = {
+        '在庫管理ID': newId,
+        '品名': itemName,
+        '商品区分': row[headers.indexOf('商品区分')] || "",
+        '区分': '取消出庫',
+        '数量': -qty,
+        '単価': unitPrice,
+        '引当元管理ID': row[invIdCol],
+        '引当完了': 1,
+        '実在庫数量': 0,
+        '備考': `取消: ${triggerId}`
+      };
+      if (triggerId.startsWith('P')) cancelRow['仕入ID'] = triggerId;
+      if (triggerId.startsWith('E')) cancelRow['仕入ID'] = triggerId;
+      if (triggerId.startsWith('M')) cancelRow['製造ID'] = triggerId;
+      if (triggerId.startsWith('S')) cancelRow['販売ID'] = triggerId;
+      
+      StockManager.appendRow(cancelRow);
+
+      // 元のレコードの実在庫を0にする
+      data[item.index][actualQtyCol] = 0;
+      data[item.index][statusCol] = 1;
+      StockManager.markModified(item.index);
+
+    } else if (qty < 0) {
+      // ケースB: 出庫の取り消し (販売や製造消費のキャンセル)
+      // -> 「取消入庫」レコードを作成し、在庫を戻す
+      const newId = StockManager.getNextInvId();
+      const cancelRow = {
+        '在庫管理ID': newId,
+        '品名': itemName,
+        '商品区分': row[headers.indexOf('商品区分')] || "",
+        '区分': '取消入庫',
+        '数量': Math.abs(qty),
+        '単価': unitPrice,
+        '引当元管理ID': sourceId,
+        '引当完了': 0,
+        '実在庫数量': Math.abs(qty),
+        '備考': `取消: ${triggerId}`
+      };
+      if (triggerId.startsWith('P')) cancelRow['仕入ID'] = triggerId;
+      if (triggerId.startsWith('E')) cancelRow['仕入ID'] = triggerId;
+      if (triggerId.startsWith('M')) cancelRow['製造ID'] = triggerId;
+      if (triggerId.startsWith('S')) cancelRow['販売ID'] = triggerId;
+      
+      StockManager.appendRow(cancelRow);
+
+      // (オプション) 引当元レコードの状態を戻す処理は、複雑化を避けるため「新規入庫」扱いとして処理
+    }
+  });
 }
 
 function processManufacturingBOM(makeId, productName, makeQty) {
@@ -967,7 +1091,8 @@ function updateInventorySummary() {
   }
 
   const sumSheet = SS.getSheetByName('T_在庫集計');
-  const sumData = sumSheet.getDataRange().getValues(); 
+  const sumRange = sumSheet.getDataRange();
+  const sumData = sumRange.getValues(); 
   const sumHeaders = sumData[0].map(h => h.toString().trim());
   
   const data = StockManager.data || []; 
@@ -997,7 +1122,9 @@ function updateInventorySummary() {
   const sQtyCol = sumHeaders.indexOf('現在庫数');
   const sUpdateCol = sumHeaders.indexOf('最終更新日');
 
-  // 既存行の更新 (ピンポイント更新)
+  let modified = false;
+
+  // 2. 既存行の更新 (メモリ上で一括書き換え)
   for (let i = 1; i < sumData.length; i++) {
     const name = sNameCol !== -1 ? sumData[i][sNameCol] : null; 
     if (!name) continue;
@@ -1007,13 +1134,20 @@ function updateInventorySummary() {
       const currentQty = sQtyCol !== -1 ? (parseFloat(sumData[i][sQtyCol]) || 0) : 0;
       const newQty = summary[name];
       if (currentQty !== newQty) {
-        if (sQtyCol !== -1) sumSheet.getRange(i + 1, sQtyCol + 1).setValue(newQty);
-        if (sUpdateCol !== -1) sumSheet.getRange(i + 1, sUpdateCol + 1).setValue(new Date());
+        if (sQtyCol !== -1) sumData[i][sQtyCol] = newQty;
+        if (sUpdateCol !== -1) sumData[i][sUpdateCol] = new Date();
+        modified = true;
       }
     }
   }
   
-  // 新規品目の追加
+  // 変更があれば一括書き込み
+  if (modified) {
+    sumRange.setValues(sumData);
+  }
+  
+  // 3. 新規品目の追加
+  const newRows = [];
   for (const name of targetItems) {
     if (!existingNames.has(name)) {
       const pRow = pData.find(r => r['品名'] === name);
@@ -1021,13 +1155,13 @@ function updateInventorySummary() {
       const useFlag = pRow ? (parseInt(pRow['使用FLG']) === 0 ? 0 : 1) : 1; 
 
       const newRow = new Array(sumHeaders.length).fill("");
-      const setCol = (name, val) => {
-        const idx = sumHeaders.indexOf(name);
+      const setCol = (colName, val) => {
+        const idx = sumHeaders.indexOf(colName);
         if (idx !== -1) newRow[idx] = val;
       };
 
       setCol('優先度', 9);
-      setCol('表示順', (sumData.length * 10));
+      setCol('表示順', ((sumData.length + newRows.length) * 10));
       setCol('品名', name);
       setCol('カテゴリ', cat);
       setCol('現在庫数', summary[name]);
@@ -1036,10 +1170,35 @@ function updateInventorySummary() {
       setCol('使用FLG', useFlag);
       setCol('最終棚卸日', "");
 
-      sumSheet.appendRow(newRow);
+      newRows.push(newRow);
     }
   }
+
+  if (newRows.length > 0) {
+    sumSheet.getRange(sumSheet.getLastRow() + 1, 1, newRows.length, sumHeaders.length).setValues(newRows);
+  }
   DataCache.clear('T_在庫集計');
+}
+
+/**
+ * 在庫の全再集計（全品目を対象に再計算）
+ */
+function rebuildInventorySummary() {
+  StockManager.init();
+  const data = StockManager.data;
+  const headers = StockManager.headers;
+  const nameCol = headers.indexOf('品名');
+  
+  if (nameCol === -1) throw new Error("品名列が見つかりません");
+  
+  // すべての品名を抽出して再計算対象にする
+  for (let i = 1; i < data.length; i++) {
+    const name = data[i][nameCol];
+    if (name) StockManager.changedItems.add(name);
+  }
+  
+  updateInventorySummary();
+  return { status: 'success', message: '在庫の全再集計が完了しました。' };
 }
 
 /**

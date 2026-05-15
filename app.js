@@ -1005,6 +1005,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
+        
+        const menuRebuildStockBtn = document.getElementById('menu-rebuild-stock-btn');
+        if (menuRebuildStockBtn) {
+            menuRebuildStockBtn.addEventListener('click', async () => {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('visible');
+                
+                if (!confirm('在庫の全再集計を実行しますか？\n(スプレッドシートの手修正内容が在庫合計に反映されます)')) return;
+                
+                setLoading(true, '在庫データを再計算中...');
+                try {
+                    const res = await fetchAPI('rebuildInventorySummary');
+                    if (res.status === 'success') {
+                        showToast(res.message, 'success');
+                        // 再集計後に最新データを取得
+                        await initSystem();
+                    } else {
+                        throw new Error(res.message);
+                    }
+                } catch (e) {
+                    console.error("Rebuild error:", e);
+                    showToast('再集計に失敗しました: ' + e.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            });
+        }
 
         // Sync Button
         const syncBtn = document.getElementById('sync-btn');
@@ -1808,7 +1835,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * 共通バリデーションロジック
      */
-    function validateData(sheet, data) {
+    function validateData(sheet, data, isUpdate = false) {
         const configs = [
             { btnId: 'buy-submit', sheet: 'T_仕入', fields: { date: 'purchase-date', status: 'buy-status-entry', vendor: 'buy-vendor', item: 'buy-item', price: 'buy-price', quantity: 'buy-quantity', payment: 'buy-payment', category: 'buy-category', note: 'buy-note' } },
             { btnId: 'exp-submit', sheet: 'T_経費', fields: { date: 'expense-date', status: 'exp-status-entry', account: 'exp-account', vendor: 'exp-vendor', item: 'exp-item', price: 'exp-price', quantity: 'exp-quantity', payment: 'exp-payment', note: 'exp-note' } },
@@ -1908,7 +1935,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 特別なビジネスルール: 販売時の在庫チェック（簡易版 - フロントにある最新データで確認）
-        if (sheet === 'T_販売') {
+        // 履歴更新時は既に引当済みのためスキップ
+        if (sheet === 'T_販売' && !isUpdate) {
             const isPersonal = data.type === 'personal';
             const productName = data.item;
             const qty = data.quantity;
@@ -2924,8 +2952,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const trackingUrl = getTrackingUrl(item['発送方法'], item['追跡番号']);
             innerHTML += `
                 <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} 数量:${item['数量']} 価格:¥${formattedTotal}(単価:¥${formattedUnit}) 送料:¥${(item['送料'] || 0).toLocaleString()}</div>
-                <div class="history-sub-info" style="margin-top: 4px; margin-bottom: 8px; font-size: 0.9em; color: var(--text-muted);">
-                    注文日:${formatDate(item['販売開始日'])} &nbsp;&nbsp; ${item['発送方法'] || ''}
+                <div class="history-inputs-grid" style="margin-bottom: 8px;">
+                    ${createInputHtml('販売開始日', '販売開始日', item['販売開始日'], 'sales-date', 'date', false)}
+                    <div class="input-group mini"><label>発送方法</label><div class="static-value">${item['発送方法'] || '-'}</div></div>
                 </div>
                 <div class="process-steps-container">
                     <label class="group-label">取引工程日付</label>
@@ -3201,7 +3230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 finalData.type = btn.getAttribute('data-is-personal') === 'true' ? 'personal' : 'business';
             }
 
-            const error = validateData(sheetName, finalData);
+            const error = validateData(sheetName, finalData, true);
             if (error) {
                 alert(error);
                 btn.innerHTML = originalHTML;
