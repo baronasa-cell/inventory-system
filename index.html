@@ -208,6 +208,12 @@
                         <button class="filter-chip" data-filter="in-stock">
                             <ion-icon name="checkmark-circle-outline"></ion-icon>在庫あり
                         </button>
+                        <button class="filter-chip" data-filter="no-stock">
+                            <ion-icon name="close-circle-outline"></ion-icon>在庫なし
+                        </button>
+                        <button class="filter-chip" data-filter="stock-alert">
+                            <ion-icon name="alert-circle-outline"></ion-icon>不足
+                        </button>
                         <button class="filter-chip" data-filter="threshold-zero">
                             <ion-icon name="warning-outline"></ion-icon>閾値0
                         </button>
@@ -217,6 +223,9 @@
                         <button class="filter-chip" data-filter="hidden">
                             <ion-icon name="eye-off-outline"></ion-icon>非表示品
                         </button>
+                        <div id="dynamic-category-chips" class="dynamic-chips-wrapper">
+                            <!-- JSで動的にカテゴリチップが生成されます -->
+                        </div>
                     </div>
                 </div>
 

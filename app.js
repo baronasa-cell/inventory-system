@@ -1315,18 +1315,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         const thresholdZeroChip = document.querySelector('.filter-chip[data-filter="threshold-zero"]');
         const uncheckedOnlyChip = document.querySelector('.filter-chip[data-filter="unchecked"]');
         const inStockOnlyChip = document.querySelector('.filter-chip[data-filter="in-stock"]');
+        const noStockOnlyChip = document.querySelector('.filter-chip[data-filter="no-stock"]');
+        const stockAlertChip = document.querySelector('.filter-chip[data-filter="stock-alert"]');
 
         const term = (stockSearchInput ? stockSearchInput.value : "").toLowerCase().trim();
         const showHidden = showHiddenChip ? showHiddenChip.classList.contains('active') : false;
         const thresholdZeroOnly = thresholdZeroChip ? thresholdZeroChip.classList.contains('active') : false;
         const uncheckedOnly = uncheckedOnlyChip ? uncheckedOnlyChip.classList.contains('active') : false;
         const inStockOnly = inStockOnlyChip ? inStockOnlyChip.classList.contains('active') : false;
+        const noStockOnly = noStockOnlyChip ? noStockOnlyChip.classList.contains('active') : false;
+        const stockAlertOnly = stockAlertChip ? stockAlertChip.classList.contains('active') : false;
         
+        // カテゴリチップの選択状態を取得
+        const activeCategoryChips = document.querySelectorAll('.dynamic-chips-wrapper .filter-chip.active');
+        const activeCategories = Array.from(activeCategoryChips).map(c => c.getAttribute('data-category'));
+
         const allStockProducts = currentMasters['T_在庫集計'] || [];
+
+        // カテゴリチップの動的生成 (フィルタ適用前に現在のマスタから抽出)
+        generateCategoryChips(allStockProducts);
 
         const filtered = allStockProducts.filter(p => {
             const name = String(p['品名'] || "").toLowerCase();
-            const category = String(p['カテゴリ'] || "").toLowerCase();
+            const category = String(p['カテゴリ'] || p['商品区分'] || "").toLowerCase();
             
             // マスタからJANコードとIDを補完して検索対象にする
             const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === p['品名']);
@@ -1344,8 +1355,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchesThreshold = !thresholdZeroOnly || threshold === 0;
             const matchesUnchecked = !uncheckedOnly || isUnchecked;
             const matchesInStock = !inStockOnly || stock > 0;
+            const matchesNoStock = !noStockOnly || stock === 0;
+            const matchesStockAlert = !stockAlertOnly || (stock <= threshold && threshold > 0);
+            
+            // カテゴリフィルタ (複数選択時はOR条件)
+            const matchesCategory = activeCategories.length === 0 || activeCategories.some(ac => category.includes(ac.toLowerCase()));
 
-            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked && matchesInStock;
+            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked && matchesInStock && matchesNoStock && matchesStockAlert && matchesCategory;
         });
 
         // 優先度と表示順によるソート (提案10)
@@ -1369,6 +1385,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         renderStockList(filtered);
+    }
+
+    /**
+     * 在庫データからカテゴリを抽出し、フィルタチップを生成する
+     */
+    function generateCategoryChips(allStock) {
+        const container = document.getElementById('dynamic-category-chips');
+        if (!container) return;
+
+        // すでに選択されているカテゴリを記憶
+        const activeCats = Array.from(container.querySelectorAll('.filter-chip.active')).map(c => c.getAttribute('data-category'));
+
+        // ユニークなカテゴリを抽出 (空文字は除外)
+        const categories = [...new Set(allStock.map(p => p['カテゴリ'] || p['商品区分'] || '').filter(c => c))].sort();
+        
+        // チップのHTML生成
+        container.innerHTML = categories.map(cat => `
+            <button class="filter-chip ${activeCats.includes(cat) ? 'active' : ''}" data-category="${cat}">
+                ${cat}
+            </button>
+        `).join('');
+
+        // イベントリスナーの再設定
+        container.querySelectorAll('.filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                chip.classList.toggle('active');
+                applyStockFilters();
+            });
+        });
     }
 
     /**
@@ -2142,6 +2187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="card-main-info">
                             <div class="card-product-name">${itemName}</div>
+                            <div class="card-category-badge">${category}</div>
                             <div class="card-sub-info">
                                 ${itemID ? `<span class="id-badge">${itemID}</span>` : ''}
                                 ${barcode ? `<span class="barcode-badge"><ion-icon name="barcode-outline"></ion-icon>${barcode}</span>` : ''}
