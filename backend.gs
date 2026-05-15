@@ -413,7 +413,7 @@ function updateTransaction(id, updates, scope = 'all') {
     if (sheetName === 'T_仕入' && newStatus === '入庫済み') autofillLabel = '入庫日';
     else if (sheetName === 'T_経費' && ['完了', 'キャンセル', '返品完了'].includes(newStatus)) autofillLabel = '完了日';
     else if (sheetName === 'T_製造') {
-        const mapping = { '製造中': '製造着手日', 'テスト中': 'テスト開始日', '梱包中': '梱包開始日', '完了': '製造完了日' };
+        const mapping = { '製造開始': '製造開始日', '製造中': '製造着手日', 'テスト中': 'テスト開始日', '梱包中': '梱包開始日', '完了': '製造完了日' };
         autofillLabel = mapping[newStatus];
     } else if (sheetName === 'T_販売') {
         const mapping = { '発送済み': '発送日', '受取済み': '受取日', '完了': '取引完了日' };
@@ -956,7 +956,17 @@ function revertFIFO(triggerId) {
       
       StockManager.appendRow(cancelRow);
 
-      // (オプション) 引当元レコードの状態を戻す処理は、複雑化を避けるため「新規入庫」扱いとして処理
+      // (オプション) 引当元レコードの状態を戻す
+      if (sourceId) {
+        const sourceRowIdx = data.findIndex(r => r[invIdCol] === sourceId);
+        if (sourceRowIdx !== -1) {
+          const currentActual = parseFloat(data[sourceRowIdx][actualQtyCol]) || 0;
+          const restoredQty = currentActual + Math.abs(qty);
+          data[sourceRowIdx][actualQtyCol] = restoredQty;
+          data[sourceRowIdx][statusCol] = (restoredQty > 0 ? 0 : 1);
+          StockManager.markModified(sourceRowIdx);
+        }
+      }
     }
   });
 }
@@ -1480,77 +1490,7 @@ function verifyAndAddMaster(sheetName, valueToAdd, extraUsage = null) {
   return { added: true, updated: false };
 }
 
-function revertFIFO(triggerId, type) {
-  const stockSheet = SS.getSheetByName('T_在庫管理');
-  const data = stockSheet.getDataRange().getValues();
-  if (data.length < 2) return;
-  const headers = data[0].map(h => h.toString().trim());
-  
-  const idCol = headers.indexOf('在庫管理ID');
-  const qtyCol = headers.indexOf('数量');
-  const actualQtyCol = headers.indexOf('実在庫数量');
-  const statusCol = headers.indexOf('引当完了');
-  const refIdCol = headers.indexOf('引当元管理ID');
-  const updatedCol = headers.indexOf('最終更新日');
-  
-  let searchCol = -1;
-  if (triggerId.startsWith('M')) searchCol = headers.indexOf('製造ID');
-  else if (triggerId.startsWith('S')) searchCol = headers.indexOf('販売ID');
-  else if (triggerId.startsWith('P') || triggerId.startsWith('E')) searchCol = headers.indexOf('仕入ID');
 
-  if (searchCol === -1 || refIdCol === -1 || actualQtyCol === -1) {
-    return;
-  }
-
-  const deductions = [];
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][searchCol] === triggerId && (parseFloat(data[i][qtyCol]) || 0) < 0) {
-      deductions.push({ rowIdx: i + 1, data: data[i] });
-    }
-  }
-
-  const now = new Date();
-  deductions.forEach(deduction => {
-    const lot = deduction.data;
-    const sourceInvId = lot[refIdCol]; 
-    const qtyToRestore = Math.abs(parseFloat(lot[qtyCol]) || 0);
-
-    for (let j = 1; j < data.length; j++) {
-      if (data[j][idCol] === sourceInvId) {
-        const currentActual = parseFloat(data[j][actualQtyCol]) || 0;
-        const newActual = currentActual + qtyToRestore;
-        
-        stockSheet.getRange(j + 1, actualQtyCol + 1).setValue(newActual);
-        if (newActual > 0 && statusCol !== -1) {
-          stockSheet.getRange(j + 1, statusCol + 1).setValue(0); 
-        }
-        if (updatedCol !== -1) {
-          stockSheet.getRange(j + 1, updatedCol + 1).setValue(now);
-        }
-        break; 
-      }
-    }
-
-    const newId = generateNextId(stockSheet, 'INV');
-    const rowObj = {
-      '在庫管理ID': newId,
-      '品名': lot[headers.indexOf('品名')],
-      '商品区分': lot[headers.indexOf('商品区分')] || "",
-      '区分': type,
-      '数量': qtyToRestore,
-      '単価': parseFloat(lot[headers.indexOf('単価')]) || 0,
-      '仕入先': lot[headers.indexOf('仕入先')] || "",
-      '引当元管理ID': lot[idCol], 
-      '引当完了': 1,            
-      '実在庫数量': 0,          
-      '備考': lot[idCol] + ' の取消・復元'
-    };
-    if (triggerId.startsWith('M')) rowObj['製造ID'] = triggerId;
-    if (triggerId.startsWith('S')) rowObj['販売ID'] = triggerId;
-    
-    appendInventoryRow(stockSheet, rowObj);
-  });
-}
 
 function updateStockThreshold(itemName, newThreshold) {
   const sheet = SS.getSheetByName('T_在庫集計');
