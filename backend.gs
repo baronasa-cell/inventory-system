@@ -173,7 +173,7 @@ function handleRequest(p) {
       case 'addMaterialToManufacturing':
         result = addMaterialToManufacturing(p.manufacturingId, p.item, p.quantity, p.reason);
         break;
-      case 'rebuildInventorySummary':
+       case 'rebuildInventorySummary':
         result = rebuildInventorySummary();
         break;
     }
@@ -623,6 +623,7 @@ const StockManager = {
       });
       this.modifiedRows.clear();
       this.isDataModified = false;
+      DataCache.clear('T_在庫管理');
     }
 
     if (this.newRows.length > 0) {
@@ -693,7 +694,8 @@ function handleStatusLogic(sheetName, id, status, currentData, oldStatus = null)
     const isNowTrigger = triggerStatuses.includes(s);
     const wasTrigger = triggerStatuses.includes(os);
     
-    if (isNowTrigger && !wasTrigger) {
+    const isInitialComplete = (s === '完了' && !oldStatus);
+    if ((isNowTrigger && !wasTrigger) || isInitialComplete) {
       const isPersonal = currentData['管理対象外'] == 1 || currentData['管理区分'] == 1;
       const productName = currentData['品名'];
       const qty = parseFloat(currentData['数量']) || 0;
@@ -709,7 +711,7 @@ function handleStatusLogic(sheetName, id, status, currentData, oldStatus = null)
       } else {
         try {
           const totalCost = processFIFO(id, '販売出庫', productName, qty);
-          unitCost = qty > 0 ? roundTo2dp(totalCost / qty) : 0;
+          unitCost = roundTo2dp(totalCost);
         } catch (e) {
           if (isPersonal) {
             unitCost = 0; 
@@ -1033,7 +1035,7 @@ function syncToLedger(sheetName, id, data) {
   let row = new Array(headers.length).fill("");
   
   const dateCol = headers.indexOf('日付');
-  const descCol = headers.indexOf('摘要');
+  const descCol = headers.indexOf('品名');
   const incomeCol = headers.indexOf('収入');
   const costCol = headers.indexOf('支出');
 
