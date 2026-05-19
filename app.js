@@ -3147,27 +3147,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // M_画面制御から設定を取得を試みる
         const masters = currentMasters['M_画面制御'] || [];
-        const ctrl = masters.find(m => m['画面名称'] === actionName && m['画面上の項目名'] === label);
-        const refMasterName = ctrl ? ctrl['参照マスタ'] : 'M_区分';
-        
-        const masterData = currentMasters[refMasterName] || [];
-        const categories = masterData
-            .filter(c => {
-                // 使用FLGが1のもののみ
-                if (parseInt(c['使用FLG']) === 0) return false;
-                // 対象機能列があれば絞り込み、なければすべて通す
-                if (c['対象機能'] && c['対象機能'] !== actionName) return false;
-                return true;
-            })
-            .sort((a, b) => (a['表示順'] || 0) - (b['表示順'] || 0));
+        const ctrl = masters.find(m => 
+            (m['画面名称'] === actionName || m['対象機能'] === actionName) && 
+            (m['画面上の項目名'] === label || m['項目名'] === label)
+        );
 
-        let options = '<option value="">選択してください</option>' + categories.map(c => {
-            // カラム名の揺れに対応 (区分名 / 区分名称 / 項目名)
-            const val = c['区分名'] || c['区分名称'] || c['項目名'] || c['仕訳名'] || Object.values(c)[1]; 
-            if (!val) return '';
-            const selected = val === currentValue ? 'selected' : '';
-            return `<option value="${val}" ${selected}>${val}</option>`;
-        }).join('');
+        let options = '<option value="">選択してください</option>';
+
+        if (ctrl && (ctrl['タイプ'] === 'fixed' || ctrl['型'] === 'fixed')) {
+            const fixedStr = ctrl['固定値'] || ctrl['固定値の内容'] || '';
+            const fixedValues = fixedStr.split(',').map(v => v.trim()).filter(v => v);
+            options += fixedValues.map(val => {
+                const selected = val === currentValue ? 'selected' : '';
+                return `<option value="${val}" ${selected}>${val}</option>`;
+            }).join('');
+        } else {
+            const refMasterName = ctrl ? ctrl['参照マスタ'] : 'M_区分';
+            const masterData = currentMasters[refMasterName] || currentMasters['M_カテゴリ'] || currentMasters['M_区分'] || [];
+            
+            const categories = masterData
+                .filter(c => {
+                    // 使用FLGが1のもののみ
+                    if (parseInt(c['使用FLG']) === 0) return false;
+                    // 対象機能列があれば絞り込み、なければすべて通す
+                    if (c['対象機能'] && c['対象機能'] !== actionName) return false;
+                    return true;
+                })
+                .sort((a, b) => (a['表示順'] || 0) - (b['表示順'] || 0));
+
+            options += categories.map(c => {
+                // カラム名の揺れに対応 (区分名 / 区分名称 / 項目名 / カテゴリ)
+                const val = c['区分名'] || c['区分名称'] || c['項目名'] || c['仕訳名'] || c['カテゴリ'] || Object.values(c)[1]; 
+                if (!val) return '';
+                const selected = val === currentValue ? 'selected' : '';
+                return `<option value="${val}" ${selected}>${val}</option>`;
+            }).join('');
+        }
 
         return `<div class="input-group mini"><label>${label}</label><select class="note-input" data-header="${label}">${options}</select></div>`;
     }

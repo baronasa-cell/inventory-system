@@ -451,7 +451,27 @@ function updateTransaction(id, updates, scope = 'all') {
   // 重要: シート更新後にキャッシュをクリアすることで、直後の handleStatusLogic が最新値を参照できる
   DataCache.clear(sheetName);
 
+  // 仕入 (T_仕入) または 経費 (T_経費) の場合、価格と数量から「単価」を自動計算する
+  if (sheetName === 'T_仕入' || sheetName === 'T_経費') {
+    const updatedRow = getRowAsObject(sheet, rowIndex + 1);
+    const qtyField = '数量';
+    const priceField = sheetName === 'T_仕入' ? '価格' : '合計金額';
+    const unitPriceColIndex = headers.indexOf('単価');
+
+    if (unitPriceColIndex !== -1) {
+      const price = parseFloat(updatedRow[priceField]) || 0;
+      const qty = parseFloat(updatedRow[qtyField]) || 0;
+      const calculatedUnitPrice = qty > 0 ? roundTo2dp(price / qty) : 0;
+      
+      sheet.getRange(rowIndex + 1, unitPriceColIndex + 1).setValue(calculatedUnitPrice);
+      // 単価更新後にフォーマットを適用
+      formatColumn(sheet, rowIndex + 1, '単価', '0.00');
+    }
+  }
+
   if (oldStatus !== newStatus) {
+    // 単価更新後なので再度キャッシュをクリアして最新行を取得
+    DataCache.clear(sheetName);
     const updatedRow = getRowAsObject(sheet, rowIndex + 1);
     handleStatusLogic(sheetName, id, newStatus, updatedRow, oldStatus);
   }
