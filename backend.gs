@@ -791,6 +791,9 @@ function handleStatusLogic(sheetName, id, status, currentData, oldStatus = null)
   StockManager.flush(); // ここで1回だけT_在庫管理に上書き・追記
   updateInventorySummary();
   SpreadsheetApp.flush(); // 全ての書き込みを最後に確定
+  
+  // ビジネスロジックによるシートへの単価書き込み等をキャッシュに同期するため確実にクリア
+  DataCache.clear(sheetName);
 }
 
 function appendInventoryRow(stockSheet, rowDataObj) {
