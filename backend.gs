@@ -1059,8 +1059,8 @@ function syncToLedger(sheetName, id, data) {
   
   const dateCol = headers.indexOf('日付');
   const descCol = headers.indexOf('品名');
-  const incomeCol = headers.indexOf('収入');
-  const costCol = headers.indexOf('支出');
+  const incomeCol = headers.indexOf('売上');
+  const costCol = headers.indexOf('仕入');
 
   // 帳簿の日付決定ロジックの適正化
   if (sheetName === 'T_販売') {

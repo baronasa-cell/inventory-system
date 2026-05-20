@@ -3200,8 +3200,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const criticalStatuses = ['完了', 'キャンセル', '入庫済み', '発送済み'];
             if (criticalStatuses.includes(newStatus)) {
                 if (!confirm(`ステータスを「${newStatus}」に変更してもよろしいですか？`)) {
-                    // キャンセルの場合は元の値に戻す
-                    if (statusSelect) statusSelect.value = oldStatus;
                     return;
                 }
             }
