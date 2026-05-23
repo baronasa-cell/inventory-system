@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '画像URL', visible: false, required: false },
-                { name: '保管場所', type: 'select', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: true, required: false },
+                { name: '保管場所', type: 'multiselect', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: true, required: false },
                 { name: 'QR/バーコード', type: 'text', visible: true, editable: true, required: false },
                 { name: '販売単価', type: 'number', visible: true, editable: true, required: false }
             ]
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '最終棚卸日', type: 'text', visible: true, editable: false, required: false },
                 { name: '商品ID', type: 'text', visible: true, editable: false, required: true }, 
-                { name: '保管場所', type: 'select', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: false, required: false },
+                { name: '保管場所', type: 'multiselect', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: false, required: false },
                 { name: 'QR/バーコード', type: 'text', visible: true, editable: false, required: false }
             ]
         },
@@ -191,20 +191,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             appContainer.style.display = 'flex';
         }
 
-        // 1. まずキャッシュからマスタを読み込んでUIを構築
+        // 1. まずキャッシュからマスタと履歴を読み込んでUIを構築
         loadMastersFromCache();
+        const hasHistoryCache = loadHistoryFromCache();
 
-        console.time('Essential Load');
-        await initSystem('essential');
-        console.timeEnd('Essential Load');
+        if (hasHistoryCache) {
+            console.log("Starting with cached data. Fetching latest data in background...");
+            showSyncBar();
+            // キャッシュがある場合は同期処理でのロードを完全にスキップし、バックグラウンドで最新データを1回だけ取得する
+            initSystem('all').then(() => {
+                console.log("Background full data load completed.");
+                hideSyncBar();
+            }).catch(err => {
+                console.warn("Background load failed:", err);
+                hideSyncBar();
+                showOfflineWarning();
+            });
+        } else {
+            console.log("No history cache found. Performing essential load first...");
+            showSyncBar();
+            console.time('Essential Load');
+            await initSystem('essential');
+            console.timeEnd('Essential Load');
 
-
-        // 4. 残りの詳細履歴データをバックグラウンドで非同期に取得 (マスタは取得済みなのでスキップ)
-        initSystem('all', { skipMasters: true }).then(() => {
-            console.log("Background data load completed.");
-        }).catch(err => {
-            console.warn("Background load failed:", err);
-        });
+            // 残りの詳細履歴データをバックグラウンドで非同期に取得 (マスタは取得済みなのでスキップ)
+            initSystem('all', { skipMasters: true }).then(() => {
+                console.log("Background data load completed.");
+                hideSyncBar();
+            }).catch(err => {
+                console.warn("Background load failed:", err);
+                hideSyncBar();
+            });
+        }
 
         // ---- 3. Image Feature Initializations ----
         setupImagePreviewListeners();
@@ -285,6 +303,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     }
                 }
+
+                // 履歴データをローカルキャッシュに保存 (提案43)
+                saveHistoryToCache(lastRawData, lastHistoryData);
 
                 renderAllHistory(lastHistoryData);
 
@@ -535,8 +556,140 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * 履歴データのキャッシュ処理 (提案43)
+     */
+    function loadHistoryFromCache() {
+        try {
+            const cachedRaw = localStorage.getItem('inventory_raw_history_cache');
+            const cachedHistory = localStorage.getItem('inventory_history_cache');
+            if (cachedRaw && cachedHistory) {
+                lastRawData = JSON.parse(cachedRaw);
+                lastHistoryData = JSON.parse(cachedHistory);
+                console.log("History loaded from cache.");
+                
+                // 読み込んだキャッシュデータで即座に画面描画
+                renderAllHistory(lastHistoryData);
+                
+                const activeTab = document.querySelector('.nav-item.active');
+                if (activeTab && activeTab.getAttribute('data-target') === 'ledger') {
+                    renderLedger();
+                }
+                return true;
+            }
+        } catch (e) {
+            console.warn("Failed to load history cache:", e);
+        }
+        return false;
+    }
+
+    function saveHistoryToCache(rawData, historyData) {
+        try {
+            localStorage.setItem('inventory_raw_history_cache', JSON.stringify(rawData));
+            localStorage.setItem('inventory_history_cache', JSON.stringify(historyData));
+            console.log("History saved to cache.");
+        } catch (e) {
+            console.warn("Failed to save history cache:", e);
+        }
+    }
+
+    // 同期中フラグ (提案43)
+    let isSyncing = false;
+
+    function showSyncBar() {
+        const syncBar = document.getElementById('sync-status-bar');
+        if (syncBar) {
+            syncBar.style.display = 'flex';
+            // 通常の同期スタイルにリセット
+            syncBar.style.background = 'rgba(220, 252, 231, 0.95)';
+            syncBar.style.borderBottom = '1px solid rgba(34, 197, 94, 0.2)';
+            
+            const icon = syncBar.querySelector('ion-icon');
+            if (icon) {
+                icon.name = 'sync-outline';
+                icon.classList.add('spinning');
+                icon.style.color = '';
+            }
+            
+            const span = syncBar.querySelector('span');
+            if (span) {
+                span.textContent = '最新データに同期中...';
+                span.style.color = '';
+            }
+        }
+        isSyncing = true;
+        toggleWriteButtons(true);
+    }
+
+    function hideSyncBar() {
+        const syncBar = document.getElementById('sync-status-bar');
+        if (syncBar) {
+            syncBar.style.display = 'none';
+        }
+        isSyncing = false;
+        toggleWriteButtons(false);
+    }
+
+    function toggleWriteButtons(disabled) {
+        const buttons = [
+            'buy-submit', 'buy-add-basket', 'make-submit', 'sale-submit', 'sale-submit-pending', 'exp-submit', 'exp-add-basket', 'bulk-update-threshold', 'bulk-update-status'
+        ];
+        buttons.forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.disabled = disabled;
+                if (disabled) {
+                    btn.classList.add('btn-disabled');
+                    btn.style.opacity = '0.6';
+                    btn.style.cursor = 'not-allowed';
+                    btn.title = '同期完了まで操作をお待ちください';
+                } else {
+                    btn.classList.remove('btn-disabled');
+                    btn.style.opacity = '';
+                    btn.style.cursor = '';
+                    btn.title = '';
+                }
+            }
+        });
+    }
+
+    function showOfflineWarning() {
+        const syncBar = document.getElementById('sync-status-bar');
+        if (syncBar) {
+            syncBar.style.display = 'flex';
+            syncBar.style.background = 'rgba(254, 243, 199, 0.95)'; // 薄い黄色 (Amber-100)
+            syncBar.style.borderBottom = '1px solid rgba(245, 158, 11, 0.3)';
+            
+            const icon = syncBar.querySelector('ion-icon');
+            if (icon) {
+                icon.name = 'cloud-offline-outline';
+                icon.classList.remove('spinning');
+                icon.style.color = '#d97706';
+            }
+            
+            const span = syncBar.querySelector('span');
+            if (span) {
+                span.textContent = 'オフライン（前回のキャッシュデータを表示中）';
+                span.style.color = '#b45309';
+            }
+            
+            // 6秒後に静かに消す
+            setTimeout(() => {
+                if (syncBar.style.background.includes('rgba(254, 243, 199')) {
+                    syncBar.style.display = 'none';
+                }
+            }, 6000);
+        }
+    }
+
     function renderAllHistory(data) {
         console.time('Client:renderAllHistory');
+
+        // 履歴データの更新時に常にローカルキャッシュを自動保存 (提案43)
+        if (data && lastRawData && Object.keys(lastRawData).length > 0) {
+            saveHistoryToCache(lastRawData, data);
+        }
+
         const history = data.history || {};
         const summary = data.summary || {};
 
@@ -4650,6 +4803,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }).join('')}
                     </select>
                 `;
+            } else if (type === 'multiselect') {
+                const currentVals = value ? value.toString().split(',').map(s => s.trim()) : [];
+                let options = [];
+                if (fieldConfig.options) {
+                    options = fieldConfig.options;
+                } else if (fieldConfig.refMaster) {
+                    const refData = currentMasters[fieldConfig.refMaster] || [];
+                    const filteredRef = fieldConfig.filter ? refData.filter(fieldConfig.filter) : refData;
+                    options = filteredRef.map(r => r['品名'] || r[Object.keys(r)[0]]);
+                }
+                
+                inputHtml = `
+                    <div class="multiselect-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; padding: 5px 0;">
+                        ${options.map((opt, i) => {
+                            const val = typeof opt === 'object' ? opt.v : opt;
+                            const lbl = typeof opt === 'object' ? opt.l : opt;
+                            const checked = currentVals.includes(String(val)) ? 'checked' : '';
+                            return `
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; font-weight: normal; margin: 0;">
+                                    <input type="checkbox" name="${key}" value="${val}" ${checked} ${!isEditable ? 'disabled' : ''}>
+                                    ${lbl}
+                                </label>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
             } else if (type === 'textarea') {
                 inputHtml = `<textarea name="${key}" ${!isEditable ? 'readonly class="readonly-field"' : ''}>${value !== undefined ? value : ''}</textarea>`;
             } else if (key === 'QR/バーコード') {
@@ -4694,6 +4873,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (type === 'switch') {
                     const checkbox = form.querySelector(`input[name="${key}"]`);
                     value = checkbox.checked ? 1 : 0;
+                } else if (type === 'multiselect') {
+                    const checkboxes = form.querySelectorAll(`input[name="${key}"]:checked`);
+                    value = Array.from(checkboxes).map(cb => cb.value).join(', ');
                 } else {
                     const element = form.querySelector(`[name="${key}"]`);
                     value = element ? element.value.trim() : '';
