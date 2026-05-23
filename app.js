@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     let html5QrCode = null; // Scanner instance
+    let isSyncing = false; // 同期中フラグ (提案43)
 
     // 買い物カゴ (Proposal 38)
     window.registrationBasket = [];
@@ -592,9 +593,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn("Failed to save history cache:", e);
         }
     }
-
-    // 同期中フラグ (提案43)
-    let isSyncing = false;
 
     function showSyncBar() {
         const syncBar = document.getElementById('sync-status-bar');
