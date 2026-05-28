@@ -31,3 +31,11 @@ Set-Content -Path src/mockData_js.html -Value $mockHtml -Encoding UTF8
 # 5. backend.gs (ルートのファイルをsrcにコピー)
 $backendContent = Get-Content backend.gs -Raw -Encoding UTF8
 Set-Content -Path src/backend.gs -Value $backendContent -Encoding UTF8
+
+# 6. GitHub Pages 用のアセット同期 (提案43)
+if (Test-Path -Path github_pages_dist) {
+    Copy-Item -Path app.js -Destination github_pages_dist/app.js -Force
+    Copy-Item -Path style.css -Destination github_pages_dist/style.css -Force
+    Copy-Item -Path index.html -Destination github_pages_dist/index.html -Force
+    Write-Output "GitHub Pages assets synchronized successfully!"
+}

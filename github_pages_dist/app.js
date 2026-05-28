@@ -23,6 +23,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     let html5QrCode = null; // Scanner instance
+    let isSyncing = false; // 同期中フラグ (提案43)
+
+    // 買い物カゴ (Proposal 38)
+    window.registrationBasket = [];
+
+    // 買い物カゴ (Proposal 38)
+    window.registrationBasket = [];
 
     // マスタ編集用スキーマ定義 (提案7・マスター管理強化)
     const MASTER_SCHEMAS = {
@@ -32,12 +39,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '商品ID', type: 'text', visible: true, editable: false, required: true },
                 { name: '表示順', type: 'number', visible: true, editable: true, required: true },
                 { name: '品名', type: 'text', visible: true, editable: false, required: true },
-                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', '単体商品', '商品', '経費', '製造'], required: true },
+                { name: 'カテゴリ', type: 'select', visible: true, editable: true, options: ['パーツ', 'パーツ2', '単体商品', '商品', '経費'], required: true },
                 { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '画像URL', visible: false, required: false },
-                { name: '保管場所', type: 'text', visible: true, editable: true, required: false },
-                { name: 'QR/バーコード', type: 'text', visible: true, editable: true, required: false }
+                { name: '保管場所', type: 'multiselect', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: true, required: false },
+                { name: 'QR/バーコード', type: 'text', visible: true, editable: true, required: false },
+                { name: '販売単価', type: 'number', visible: true, editable: true, required: false }
             ]
         },
         'M_仕入先': {
@@ -99,7 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '最終棚卸日', type: 'text', visible: true, editable: false, required: false },
                 { name: '商品ID', type: 'text', visible: true, editable: false, required: true }, 
-                { name: '保管場所', type: 'text', visible: true, editable: false, required: false },
+                { name: '保管場所', type: 'multiselect', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: false, required: false },
                 { name: 'QR/バーコード', type: 'text', visible: true, editable: false, required: false }
             ]
         },
@@ -150,9 +158,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupToggleLogics();
         setupSettingsListeners();
         setupScannerListeners(); // スキャナーはデータロードを待たずに即座に有効化
+        setupInventoryCheckListeners();
 
         // ---- 2. System Initialization (Data Fetching) ----
         // 認証チェック (GAS環境以外の場合)
+        // クイック検索モーダルのイベント設定
+        const qsCloseBtn = document.getElementById('quick-search-close-btn');
+        if (qsCloseBtn) qsCloseBtn.onclick = closeQuickSearch;
+        
+        const qsInput = document.getElementById('quick-search-input');
+        if (qsInput) qsInput.oninput = window.applyQuickSearchFilter;
+
+        // クイック検索モーダル外クリックで閉じる
+        window.onclick = function(event) {
+            const modal = document.getElementById('quick-search-modal');
+            if (event.target == modal) {
+                closeQuickSearch();
+            }
+        };
+
+        // 初期化完了後に検索ボタンを配置
+        initQuickSearchButtons();
         if (typeof google === 'undefined' && !currentAuthKey) {
             setupLoginHandlers();
             showLoginModal();
@@ -166,20 +192,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             appContainer.style.display = 'flex';
         }
 
-        // 1. まずキャッシュからマスタを読み込んでUIを構築
+        // 1. まずキャッシュからマスタと履歴を読み込んでUIを構築
         loadMastersFromCache();
+        const hasHistoryCache = loadHistoryFromCache();
 
-        console.time('Essential Load');
-        await initSystem('essential');
-        console.timeEnd('Essential Load');
+        if (hasHistoryCache) {
+            console.log("Starting with cached data. Fetching latest data in background...");
+            showSyncBar();
+            // キャッシュがある場合は同期処理でのロードを完全にスキップし、バックグラウンドで最新データを1回だけ取得する
+            initSystem('all').then(() => {
+                console.log("Background full data load completed.");
+                hideSyncBar();
+            }).catch(err => {
+                console.warn("Background load failed:", err);
+                hideSyncBar();
+                showOfflineWarning();
+            });
+        } else {
+            console.log("No history cache found. Performing essential load first...");
+            showSyncBar();
+            console.time('Essential Load');
+            await initSystem('essential');
+            console.timeEnd('Essential Load');
 
-
-        // 4. 残りの詳細履歴データをバックグラウンドで非同期に取得 (マスタは取得済みなのでスキップ)
-        initSystem('all', { skipMasters: true }).then(() => {
-            console.log("Background data load completed.");
-        }).catch(err => {
-            console.warn("Background load failed:", err);
-        });
+            // 残りの詳細履歴データをバックグラウンドで非同期に取得 (マスタは取得済みなのでスキップ)
+            initSystem('all', { skipMasters: true }).then(() => {
+                console.log("Background data load completed.");
+                hideSyncBar();
+            }).catch(err => {
+                console.warn("Background load failed:", err);
+                hideSyncBar();
+            });
+        }
 
         // ---- 3. Image Feature Initializations ----
         setupImagePreviewListeners();
@@ -260,6 +304,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     }
                 }
+
+                // 履歴データをローカルキャッシュに保存 (提案43)
+                saveHistoryToCache(lastRawData, lastHistoryData);
 
                 renderAllHistory(lastHistoryData);
 
@@ -510,8 +557,137 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * 履歴データのキャッシュ処理 (提案43)
+     */
+    function loadHistoryFromCache() {
+        try {
+            const cachedRaw = localStorage.getItem('inventory_raw_history_cache');
+            const cachedHistory = localStorage.getItem('inventory_history_cache');
+            if (cachedRaw && cachedHistory) {
+                lastRawData = JSON.parse(cachedRaw);
+                lastHistoryData = JSON.parse(cachedHistory);
+                console.log("History loaded from cache.");
+                
+                // 読み込んだキャッシュデータで即座に画面描画
+                renderAllHistory(lastHistoryData);
+                
+                const activeTab = document.querySelector('.nav-item.active');
+                if (activeTab && activeTab.getAttribute('data-target') === 'ledger') {
+                    renderLedger();
+                }
+                return true;
+            }
+        } catch (e) {
+            console.warn("Failed to load history cache:", e);
+        }
+        return false;
+    }
+
+    function saveHistoryToCache(rawData, historyData) {
+        try {
+            localStorage.setItem('inventory_raw_history_cache', JSON.stringify(rawData));
+            localStorage.setItem('inventory_history_cache', JSON.stringify(historyData));
+            console.log("History saved to cache.");
+        } catch (e) {
+            console.warn("Failed to save history cache:", e);
+        }
+    }
+
+    function showSyncBar() {
+        const syncBar = document.getElementById('sync-status-bar');
+        if (syncBar) {
+            syncBar.style.display = 'flex';
+            // 通常の同期スタイルにリセット
+            syncBar.style.background = 'rgba(220, 252, 231, 0.95)';
+            syncBar.style.borderBottom = '1px solid rgba(34, 197, 94, 0.2)';
+            
+            const icon = syncBar.querySelector('ion-icon');
+            if (icon) {
+                icon.name = 'sync-outline';
+                icon.classList.add('spinning');
+                icon.style.color = '';
+            }
+            
+            const span = syncBar.querySelector('span');
+            if (span) {
+                span.textContent = '最新データに同期中...';
+                span.style.color = '';
+            }
+        }
+        isSyncing = true;
+        toggleWriteButtons(true);
+    }
+
+    function hideSyncBar() {
+        const syncBar = document.getElementById('sync-status-bar');
+        if (syncBar) {
+            syncBar.style.display = 'none';
+        }
+        isSyncing = false;
+        toggleWriteButtons(false);
+    }
+
+    function toggleWriteButtons(disabled) {
+        const buttons = [
+            'buy-submit', 'buy-add-basket', 'make-submit', 'sale-submit', 'sale-submit-pending', 'exp-submit', 'exp-add-basket', 'bulk-update-threshold', 'bulk-update-status'
+        ];
+        buttons.forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.disabled = disabled;
+                if (disabled) {
+                    btn.classList.add('btn-disabled');
+                    btn.style.opacity = '0.6';
+                    btn.style.cursor = 'not-allowed';
+                    btn.title = '同期完了まで操作をお待ちください';
+                } else {
+                    btn.classList.remove('btn-disabled');
+                    btn.style.opacity = '';
+                    btn.style.cursor = '';
+                    btn.title = '';
+                }
+            }
+        });
+    }
+
+    function showOfflineWarning() {
+        const syncBar = document.getElementById('sync-status-bar');
+        if (syncBar) {
+            syncBar.style.display = 'flex';
+            syncBar.style.background = 'rgba(254, 243, 199, 0.95)'; // 薄い黄色 (Amber-100)
+            syncBar.style.borderBottom = '1px solid rgba(245, 158, 11, 0.3)';
+            
+            const icon = syncBar.querySelector('ion-icon');
+            if (icon) {
+                icon.name = 'cloud-offline-outline';
+                icon.classList.remove('spinning');
+                icon.style.color = '#d97706';
+            }
+            
+            const span = syncBar.querySelector('span');
+            if (span) {
+                span.textContent = 'オフライン（前回のキャッシュデータを表示中）';
+                span.style.color = '#b45309';
+            }
+            
+            // 6秒後に静かに消す
+            setTimeout(() => {
+                if (syncBar.style.background.includes('rgba(254, 243, 199')) {
+                    syncBar.style.display = 'none';
+                }
+            }, 6000);
+        }
+    }
+
     function renderAllHistory(data) {
         console.time('Client:renderAllHistory');
+
+        // 履歴データの更新時に常にローカルキャッシュを自動保存 (提案43)
+        if (data && lastRawData && Object.keys(lastRawData).length > 0) {
+            saveHistoryToCache(lastRawData, data);
+        }
+
         const history = data.history || {};
         const summary = data.summary || {};
 
@@ -927,18 +1103,99 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
 
+        // Side Menu Logic (提案32)
+        const sideMenu = document.getElementById('side-menu');
+        const menuOverlay = document.getElementById('menu-overlay');
+        const menuOpenBtn = document.getElementById('menu-open-btn');
+        const menuCloseBtn = document.getElementById('menu-close-btn');
+
+        if (menuOpenBtn) {
+            menuOpenBtn.addEventListener('click', () => {
+                sideMenu.classList.add('open');
+                menuOverlay.classList.add('visible');
+            });
+        }
+
+        if (menuCloseBtn) {
+            menuCloseBtn.addEventListener('click', () => {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('visible');
+            });
+        }
+
+        if (menuOverlay) {
+            menuOverlay.addEventListener('click', () => {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('visible');
+            });
+        }
+
+        // メニュー内アイテムのクリック処理
+        const menuSettingsBtn = document.getElementById('menu-settings-btn');
+        const menuMasterBtn = document.getElementById('menu-master-btn');
+        const settingsModal = document.getElementById('settings-modal');
+
+        if (menuSettingsBtn) {
+            menuSettingsBtn.addEventListener('click', () => {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('visible');
+                if (settingsModal) {
+                    settingsModal.classList.add('active');
+                    renderMasterList('system');
+                }
+            });
+        }
+
+        if (menuMasterBtn) {
+            menuMasterBtn.addEventListener('click', () => {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('visible');
+                if (settingsModal) {
+                    settingsModal.classList.add('active');
+                    renderMasterList('master');
+                }
+            });
+        }
+        
+        const menuRebuildStockBtn = document.getElementById('menu-rebuild-stock-btn');
+        if (menuRebuildStockBtn) {
+            menuRebuildStockBtn.addEventListener('click', async () => {
+                sideMenu.classList.remove('open');
+                menuOverlay.classList.remove('visible');
+                
+                if (!confirm('在庫の全再集計を実行しますか？\n(スプレッドシートの手修正内容が在庫合計に反映されます)')) return;
+                
+                setLoading(true, '在庫データを再計算中...');
+                try {
+                    const res = await fetchAPI('rebuildInventorySummary');
+                    if (res.status === 'success') {
+                        showToast(res.message, 'success');
+                        // 再集計後に最新データを取得
+                        await initSystem();
+                    } else {
+                        throw new Error(res.message);
+                    }
+                } catch (e) {
+                    console.error("Rebuild error:", e);
+                    showToast('再集計に失敗しました: ' + e.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            });
+        }
+
         // Sync Button
         const syncBtn = document.getElementById('sync-btn');
         if (syncBtn) {
             syncBtn.addEventListener('click', () => {
                 const icon = syncBtn.querySelector('ion-icon');
-                if (icon) icon.style.animation = 'spin 1s linear infinite';
+                if (icon) icon.classList.add('spinning');
                 setLoading(true, 'システムデータを同期中...');
                 initSystem().then(() => {
-                    if (icon) icon.style.animation = '';
+                    if (icon) icon.classList.remove('spinning');
                     setLoading(false);
                 }).catch(e => {
-                    if (icon) icon.style.animation = '';
+                    if (icon) icon.classList.remove('spinning');
                     setLoading(false);
                     showToast('同期に失敗しました', 'error');
                 });
@@ -1153,8 +1410,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                             masterData = parseAndApplyFilter(masterData, ctrl['抽出条件'], masters);
                         }
                         if (masterData && masterData.length > 0) {
-                            const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称'];
-                            const keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
+                            const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称', '商品ID', '仕入先ID', '売先ID', '発送ID', '仕訳ID', '画像URL'];
+                            const priorityFields = ['品名', '完成品名', '名称', 'ステータス名称', '仕入先', '売先', '発送方法', '仕訳名'];
+                            
+                            let keyField = priorityFields.find(k => masterData[0].hasOwnProperty(k));
+                            if (!keyField) {
+                                keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
+                            }
+                            
                             if (keyField) options = masterData.map(r => r[keyField]);
                         }
                     }
@@ -1188,6 +1451,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 在庫一覧の初期描画: フィルタ設定を考慮して描画
         applyStockFilters();
+
+        // 動的生成・差し替え後の要素にリスナーを再設定 (提案対応)
+        setupAutocompleteListeners();
+        setupInventoryCheckListeners();
     }
 
     /**
@@ -1199,18 +1466,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         const thresholdZeroChip = document.querySelector('.filter-chip[data-filter="threshold-zero"]');
         const uncheckedOnlyChip = document.querySelector('.filter-chip[data-filter="unchecked"]');
         const inStockOnlyChip = document.querySelector('.filter-chip[data-filter="in-stock"]');
+        const noStockOnlyChip = document.querySelector('.filter-chip[data-filter="no-stock"]');
+        const stockAlertChip = document.querySelector('.filter-chip[data-filter="stock-alert"]');
 
         const term = (stockSearchInput ? stockSearchInput.value : "").toLowerCase().trim();
         const showHidden = showHiddenChip ? showHiddenChip.classList.contains('active') : false;
         const thresholdZeroOnly = thresholdZeroChip ? thresholdZeroChip.classList.contains('active') : false;
         const uncheckedOnly = uncheckedOnlyChip ? uncheckedOnlyChip.classList.contains('active') : false;
         const inStockOnly = inStockOnlyChip ? inStockOnlyChip.classList.contains('active') : false;
+        const noStockOnly = noStockOnlyChip ? noStockOnlyChip.classList.contains('active') : false;
+        const stockAlertOnly = stockAlertChip ? stockAlertChip.classList.contains('active') : false;
         
+        // カテゴリチップの選択状態を取得
+        const activeCategoryChips = document.querySelectorAll('.dynamic-chips-wrapper .filter-chip.active');
+        const activeCategories = Array.from(activeCategoryChips).map(c => c.getAttribute('data-category'));
+
         const allStockProducts = currentMasters['T_在庫集計'] || [];
+
+        // カテゴリチップの動的生成 (フィルタ適用前に現在のマスタから抽出)
+        generateCategoryChips(allStockProducts);
 
         const filtered = allStockProducts.filter(p => {
             const name = String(p['品名'] || "").toLowerCase();
-            const category = String(p['カテゴリ'] || "").toLowerCase();
+            const category = String(p['カテゴリ'] || p['商品区分'] || "").toLowerCase();
             
             // マスタからJANコードとIDを補完して検索対象にする
             const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === p['品名']);
@@ -1228,8 +1506,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchesThreshold = !thresholdZeroOnly || threshold === 0;
             const matchesUnchecked = !uncheckedOnly || isUnchecked;
             const matchesInStock = !inStockOnly || stock > 0;
+            const matchesNoStock = !noStockOnly || stock === 0;
+            const matchesStockAlert = !stockAlertOnly || (stock <= threshold && threshold > 0);
+            
+            // カテゴリフィルタ (複数選択時はOR条件)
+            const matchesCategory = activeCategories.length === 0 || activeCategories.some(ac => category.includes(ac.toLowerCase()));
 
-            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked && matchesInStock;
+            return matchesSearch && matchesVisibility && matchesThreshold && matchesUnchecked && matchesInStock && matchesNoStock && matchesStockAlert && matchesCategory;
         });
 
         // 優先度と表示順によるソート (提案10)
@@ -1256,6 +1539,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * 在庫データからカテゴリを抽出し、フィルタチップを生成する
+     */
+    function generateCategoryChips(allStock) {
+        const container = document.getElementById('dynamic-category-chips');
+        if (!container) return;
+
+        // すでに選択されているカテゴリを記憶
+        const activeCats = Array.from(container.querySelectorAll('.filter-chip.active')).map(c => c.getAttribute('data-category'));
+
+        // ユニークなカテゴリを抽出 (空文字は除外)
+        const categories = [...new Set(allStock.map(p => p['カテゴリ'] || p['商品区分'] || '').filter(c => c))].sort();
+        
+        // チップのHTML生成
+        container.innerHTML = categories.map(cat => `
+            <button class="filter-chip ${activeCats.includes(cat) ? 'active' : ''}" data-category="${cat}">
+                ${cat}
+            </button>
+        `).join('');
+
+        // イベントリスナーの再設定
+        container.querySelectorAll('.filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                chip.classList.toggle('active');
+                applyStockFilters();
+            });
+        });
+    }
+
+    /**
      * 最新の生データから在庫マスタを同期し、UIをリフレッシュする
      */
     function refreshInventoryUI() {
@@ -1277,6 +1589,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 elm.appendChild(o);
             });
             if (currentVal) elm.value = currentVal;
+        } else if (elm.tagName === 'DATALIST') {
+            elm.innerHTML = '';
+            options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt;
+                elm.appendChild(o);
+            });
         } else if (elm.hasAttribute('list')) {
             const listId = elm.getAttribute('list');
             if (listId) {
@@ -1293,34 +1612,125 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * クイック検索モーダルを開く (Proposal 37)
+     */
+    window.openQuickSearch = function (inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        let options = [];
+        if (input.tagName === 'SELECT') {
+            options = Array.from(input.options)
+                .map(o => o.value)
+                .filter(val => val !== "");
+        } else {
+            const listId = input.getAttribute('list');
+            const datalist = document.getElementById(listId);
+            if (datalist) {
+                options = Array.from(datalist.options).map(o => o.value);
+            }
+        }
+
+        if (options.length === 0) return;
+
+        const title = input.previousElementSibling ? input.previousElementSibling.textContent : "項目を選択";
+
+        document.getElementById('quick-search-title').textContent = title;
+        document.getElementById('quick-search-input').value = "";
+        window.currentQuickSearchInputId = inputId;
+        window.currentQuickSearchOptions = options;
+
+        renderQuickSearchList(options);
+        document.getElementById('quick-search-modal').classList.add('active');
+        setTimeout(() => document.getElementById('quick-search-input').focus(), 100);
+    };
+
+    /**
+     * クイック検索リストをレンダリング
+     */
+    function renderQuickSearchList(options) {
+        const container = document.getElementById('quick-search-list');
+        container.innerHTML = options.map(opt => `
+            <div class="quick-search-item" onclick="selectQuickSearchItem('${opt.replace(/'/g, "\\'")}')">
+                <span>${opt}</span>
+                <ion-icon name="chevron-forward-outline"></ion-icon>
+            </div>
+        `).join('');
+    }
+
+    /**
+     * クイック検索のフィルタリング
+     */
+    window.applyQuickSearchFilter = function () {
+        const keyword = document.getElementById('quick-search-input').value.toLowerCase();
+        const filtered = window.currentQuickSearchOptions.filter(opt => 
+            opt.toLowerCase().includes(keyword)
+        );
+        renderQuickSearchList(filtered);
+    };
+
+    /**
+     * 項目選択
+     */
+    window.selectQuickSearchItem = function (value) {
+        const input = document.getElementById(window.currentQuickSearchInputId);
+        if (input) {
+            input.value = value;
+            // イベントを発火させて変更を通知
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        closeQuickSearch();
+    };
+
+    function closeQuickSearch() {
+        document.getElementById('quick-search-modal').classList.remove('active');
+    }
+
+    /**
+     * 全てのサジェスト入力欄に検索ボタンを付与
+     */
+    function initQuickSearchButtons() {
+        document.querySelectorAll('input[list]').forEach(input => {
+            // 既にボタンがあるか、特定の除外対象（マスタ編集用など）でなければ追加
+            if (input.parentElement.classList.contains('input-with-icon')) return;
+            if (input.id.startsWith('master-')) return; 
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'input-with-icon';
+            input.parentNode.insertBefore(wrapper, input);
+            wrapper.appendChild(input);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'icon-input-btn mini-search-btn';
+            btn.innerHTML = '<ion-icon name="search-outline"></ion-icon>';
+            btn.onclick = () => window.openQuickSearch(input.id);
+            wrapper.appendChild(btn);
+        });
+    }
+
     function toggleSaleItemInput(isPersonal) {
         let saleItemField = document.getElementById('sale-item');
         if (!saleItemField) return;
 
-        // すでにラッパーの中にある場合は、ラッパーの親を取得
-        const container = saleItemField.dataset.hasClear === "true" ?
-            saleItemField.closest('.input-clear-wrapper').parentElement :
-            saleItemField.parentElement;
+        const container = saleItemField.closest('.input-with-icon');
+        if (!container) return;
+        
         const currentVal = saleItemField.value;
+        const modeText = document.getElementById('sale-item-mode-text');
 
         if (isPersonal && saleItemField.tagName === 'SELECT') {
             const input = document.createElement('input');
             input.type = 'text';
             input.id = 'sale-item';
             input.placeholder = '品名を自由入力';
-            input.setAttribute('list', 'product-list');
             input.value = currentVal;
-
-            // 古い要素を置換（ラッパーごと置換する必要がある場合を考慮）
-            const targetToReplace = saleItemField.dataset.hasClear === "true" ?
-                saleItemField.closest('.input-clear-wrapper') :
-                saleItemField;
-            container.replaceChild(input, targetToReplace);
-
-            // 新規入力欄にクリアボタンを追加
-            addClearButton(input);
+            
+            container.replaceChild(input, saleItemField);
+            if (modeText) modeText.textContent = '(個人用: 自由入力可)';
         } else if (!isPersonal && saleItemField.tagName === 'INPUT') {
-            // 事業用の場合は、M_画面制御の定義に従って select か suggest-strict かを判定
             const masters = currentMasters['M_画面制御'] || [];
             const ctrl = masters.find(m => m['要素ID'] === 'sale-item');
             const type = ctrl ? ctrl['タイプ'] : 'select';
@@ -1338,20 +1748,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     select.appendChild(o);
                 });
                 select.value = currentVal;
-
-                const targetToReplace = saleItemField.dataset.hasClear === "true" ?
-                    saleItemField.closest('.input-clear-wrapper') :
-                    saleItemField;
-                container.replaceChild(select, targetToReplace);
+                
+                container.replaceChild(select, saleItemField);
+                if (modeText) modeText.textContent = '(事業用: リストから選択のみ)';
             } else {
-                // suggest-strict の場合は INPUT のままでよいが、プレースホルダーなどを更新
-                saleItemField.placeholder = '販売品名を検索...';
-                const modeText = document.getElementById('sale-item-mode-text');
+                saleItemField.placeholder = '品名を入力または検索';
                 if (modeText) modeText.textContent = '(事業用: リストから選択のみ)';
             }
         }
 
-        // 差し替え後の要素にプレビューリスナーを再設定
         setupImagePreviewListeners();
     }
 
@@ -1429,6 +1834,129 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * 製造・販売：入力変更時に在庫チェックを走らせるリスナー群
+     */
+    function setupInventoryCheckListeners() {
+        // 製造：BOM在庫チェック
+        const makeItem = document.getElementById('make-item');
+        const makeQty = document.getElementById('make-quantity');
+        
+        if (makeItem && !makeItem.dataset.bomBound) {
+            makeItem.dataset.bomBound = "true";
+            const bomCheckUpdate = () => {
+                if (typeof updateBOMCheck === 'function') {
+                    updateBOMCheck(makeItem.value, makeQty ? makeQty.value : '');
+                }
+            };
+            makeItem.addEventListener(makeItem.tagName === 'INPUT' ? 'input' : 'change', bomCheckUpdate);
+            if (makeQty) makeQty.addEventListener('input', bomCheckUpdate);
+        }
+
+        // 販売：単品在庫チェック
+        const saleItem = document.getElementById('sale-item');
+        const saleQty = document.getElementById('sale-quantity');
+
+        if (saleItem && !saleItem.dataset.stockBound) {
+            saleItem.dataset.stockBound = "true";
+            const saleCheckUpdate = () => {
+                const itemName = saleItem.value;
+                if (typeof updateSaleStockCheck === 'function') {
+                    updateSaleStockCheck(itemName, saleQty ? saleQty.value : '');
+                }
+                
+                // 価格の自動補完 (提案35対応 & バグ修正)
+                if (itemName) {
+                    const priceInput = document.getElementById('sale-price');
+                    if (priceInput) {
+                        // 品名が変更された、または価格が空の場合に補完を実行
+                        const isItemChanged = itemName !== saleItem.dataset.lastAutoItem;
+                        const isPriceEmpty = !priceInput.value;
+                        const isAutoPrice = priceInput.value === priceInput.dataset.lastAutoPrice;
+
+                        if (isItemChanged || isPriceEmpty || isAutoPrice) {
+                            let suggestedPrice = null;
+                            
+                            // 1. 直近の販売履歴から検索
+                            const salesHistory = lastRawData ? lastRawData['T_販売'] : null;
+                            if (salesHistory && salesHistory.length > 1) {
+                                const headers = salesHistory[0];
+                                const nameIdx = headers.indexOf('品名');
+                                const priceIdx = headers.indexOf('販売価格') !== -1 ? headers.indexOf('販売価格') : headers.indexOf('価格');
+                                const statusIdx = headers.indexOf('ステータス');
+                                
+                                for (let i = salesHistory.length - 1; i >= 1; i--) {
+                                    const row = salesHistory[i];
+                                    if (row[nameIdx] === itemName && row[statusIdx] === '完了' && row[priceIdx]) {
+                                        suggestedPrice = row[priceIdx];
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // 2. 履歴になければ商品マスタから取得
+                            if (!suggestedPrice && currentMasters && currentMasters['M_商品']) {
+                                const product = currentMasters['M_商品'].find(p => p['品名'] === itemName);
+                                if (product && product['販売単価']) {
+                                    suggestedPrice = product['販売単価'];
+                                }
+                            }
+                            
+                            if (suggestedPrice) {
+                                priceInput.value = suggestedPrice;
+                                priceInput.dataset.lastAutoPrice = suggestedPrice; // 自動入力値を記憶
+                                saleItem.dataset.lastAutoItem = itemName; // 補完時の品名を記憶
+                                priceInput.dispatchEvent(new Event('change'));
+                            }
+                        }
+                    }
+                }
+            };
+            saleItem.addEventListener(saleItem.tagName === 'INPUT' ? 'input' : 'change', saleCheckUpdate);
+            if (saleQty) saleQty.addEventListener('input', saleCheckUpdate);
+        }
+    }
+
+    /**
+     * 販売時の在庫チェック (提案対応)
+     */
+    function updateSaleStockCheck(itemName, quantity) {
+        const container = document.getElementById('sale-stock-check-container');
+        const resultDiv = document.getElementById('sale-stock-check-result');
+        if (!container || !resultDiv) return;
+
+        if (!itemName || !quantity) {
+            container.style.display = 'none';
+            return;
+        }
+
+        const qty = parseFloat(quantity) || 0;
+        const stockItem = (currentMasters['T_在庫集計'] || []).find(s => s['品名'] === itemName);
+
+        if (!stockItem) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        const currentQty = parseFloat(stockItem['現在庫数']) || 0;
+        const remaining = currentQty - qty;
+        const isOk = remaining >= 0;
+
+        // 案1: 品名を除外したコンパクトな表示
+        resultDiv.innerHTML = `
+            <div class="bom-item-status" style="font-weight: 600;">
+                <span class="bom-item-qty ${isOk ? 'ok' : 'ng'}" style="flex: none; min-width: auto; padding: 2px 6px;">
+                    <ion-icon name="${isOk ? 'checkmark-circle' : 'warning'}" style="vertical-align: middle; margin-right: 4px;"></ion-icon>
+                    ${isOk ? '在庫OK' : '在庫不足'}
+                </span>
+                <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">
+                    (現在庫: ${currentQty} → ${isOk ? '残り' : '不足'}: ${Math.abs(remaining)})
+                </span>
+            </div>
+        `;
+    }
+
     function setupTransactionSubmitters() {
         const configs = [
             { btnId: 'buy-submit', sheet: 'T_仕入', fields: { date: 'purchase-date', status: 'buy-status-entry', vendor: 'buy-vendor', item: 'buy-item', price: 'buy-price', quantity: 'buy-quantity', payment: 'buy-payment', category: 'buy-category', note: 'buy-note' } },
@@ -1459,8 +1987,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (el) {
                             let val = el.value;
                             if (el.type === 'number') {
-                                // 数値項目が空の場合は NaN を維持（バリデーションで検知するため）
-                                val = val === '' ? NaN : parseFloat(val);
+                                // 数値項目が空の場合は null として扱う。必須項目であればバリデーションで検知される。
+                                val = val === '' ? null : parseFloat(val);
                             } else if (typeof val === 'string') {
                                 val = val.trim();
                             }
@@ -1501,7 +2029,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * 共通バリデーションロジック
      */
-    function validateData(sheet, data) {
+    function validateData(sheet, data, isUpdate = false) {
         const configs = [
             { btnId: 'buy-submit', sheet: 'T_仕入', fields: { date: 'purchase-date', status: 'buy-status-entry', vendor: 'buy-vendor', item: 'buy-item', price: 'buy-price', quantity: 'buy-quantity', payment: 'buy-payment', category: 'buy-category', note: 'buy-note' } },
             { btnId: 'exp-submit', sheet: 'T_経費', fields: { date: 'expense-date', status: 'exp-status-entry', account: 'exp-account', vendor: 'exp-vendor', item: 'exp-item', price: 'exp-price', quantity: 'exp-quantity', payment: 'exp-payment', note: 'exp-note' } },
@@ -1543,7 +2071,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { key: 'quantity', label: '数量', required: true, min: 1 },
                 { key: 'price', label: '販売価格', required: true, min: 0 },
                 { key: 'shipping', label: '発送方法', required: true },
-                { key: 'shippingCost', label: '送料合計', required: true, min: 0 }
+                { key: 'shippingCost', label: '送料合計', required: false, min: 0 }
             ]
         };
 
@@ -1555,30 +2083,45 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 必須チェック
             if (rule.required) {
-                if (val === undefined || val === null || val === '' || (typeof val === 'number' && isNaN(val))) {
-                    return `「${rule.label}」を入力してください。`;
+                // 購入予定の場合はすべての必須チェックをスキップ (提案30: 柔軟なワークフロー)
+                const isPlanned = (data.status === '購入予定');
+                
+                if (!isPlanned) {
+                    if (val === undefined || val === null || val === '' || (typeof val === 'number' && isNaN(val))) {
+                        return `「${rule.label}」を入力してください。`;
+                    }
                 }
             }
 
             // 数値チェック（最小値）
             if (rule.min !== undefined && typeof val === 'number') {
-                if (val < rule.min) {
-                    return `「${rule.label}」は ${rule.min} 以上の数値を入力してください。`;
+                // 購入予定の場合は数値の最小値チェックをスキップ
+                const isPlanned = (data.status === '購入予定');
+
+                if (!isPlanned) {
+                    if (val < rule.min) {
+                        return `「${rule.label}」は ${rule.min} 以上の数値を入力してください。`;
+                    }
                 }
             }
 
-            // suggest-strict のバリデーション
+            // suggest-strict のバリデーション (新規登録時のみ実行)
             const el = document.getElementById(confFields[rule.key]);
-            if (el && el.dataset.type === 'suggest-strict') {
+            if (el && el.dataset.type === 'suggest-strict' && !isUpdate) {
                 // 販売タブで「個人用」が選択されている場合は、マスタチェックをスキップする
                 const isPersonalSales = (sheet === 'T_販売' && data.type === 'personal');
                 if (!isPersonalSales) {
                     const masterName = el.dataset.master;
                     const masterData = currentMasters[masterName] || [];
                     
-                    // 除外フィールドを考慮して品名などのキーフィールドを特定（buildDynamicUIと同様のロジック）
-                    const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称'];
-                    const keyField = masterData.length > 0 ? Object.keys(masterData[0]).find(k => !excludeFields.includes(k)) : null;
+                    // 除外フィールドを考慮して品名などのキーフィールドを特定
+                    const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称', '商品ID', '仕入先ID', '売先ID', '発送ID', '仕訳ID', '画像URL'];
+                    const priorityFields = ['品名', '完成品名', '名称', 'ステータス名称', '仕入先', '売先', '発送方法', '仕訳名'];
+                    
+                    let keyField = priorityFields.find(k => masterData.length > 0 && masterData[0].hasOwnProperty(k));
+                    if (!keyField && masterData.length > 0) {
+                        keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
+                    }
                     
                     if (keyField) {
                         const exists = masterData.some(r => String(r[keyField]) === String(val));
@@ -1591,7 +2134,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 特別なビジネスルール: 販売時の在庫チェック（簡易版 - フロントにある最新データで確認）
-        if (sheet === 'T_販売') {
+        // 履歴更新時は既に引当済みのためスキップ
+        if (sheet === 'T_販売' && !isUpdate) {
             const isPersonal = data.type === 'personal';
             const productName = data.item;
             const qty = data.quantity;
@@ -1602,6 +2146,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const currentQty = parseFloat(stockItem['現在庫数']) || 0;
                 if (qty > currentQty) {
                     return `在庫不足です。「${productName}」の現在庫は ${currentQty} です。`;
+                }
+            }
+
+            // 発送方法が選択されている場合は、対応する梱包材の在庫も確認する
+            if (data.shipping) {
+                const packagingItem = (currentMasters['T_在庫集計'] || []).find(s => s['品名'] === data.shipping);
+                const packageQty = packagingItem ? parseFloat(packagingItem['現在庫数']) || 0 : 0;
+                if (!packagingItem || packageQty < 1) {
+                    return `発送方法「${data.shipping}」に対応する梱包材の在庫が不足しています。`;
                 }
             }
         }
@@ -1633,6 +2186,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     inputs.forEach(input => {
                         input.value = '';
                     });
+                    
+                    // 販売タブの場合は数量を1にリセット (提案35)
+                    if (sheet === 'T_販売') {
+                        const qtyInput = document.getElementById('sale-quantity');
+                        if (qtyInput) qtyInput.value = '1';
+                    }
 
                     // 商品写真プレビューもクリア
                     const previews = tabContent.querySelectorAll('.input-image-preview');
@@ -1786,15 +2345,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 card.innerHTML = `
                     <div class="card-header">
-                        <div class="product-thumb-container" onclick="showImageModal('${imageUrl}')">
+                        <div class="product-thumb-container" onclick="showImageModal('${(imageUrl || '').replace(/'/g, "\\'")}')">
                             ${imageUrl ? `<img src="${imageUrl}" loading="lazy">` : `<ion-icon name="image-outline"></ion-icon>`}
                         </div>
                         <div class="card-main-info">
                             <div class="card-product-name">${itemName}</div>
+                            <div class="card-category-badge">${category}</div>
                             <div class="card-sub-info">
                                 ${itemID ? `<span class="id-badge">${itemID}</span>` : ''}
                                 ${barcode ? `<span class="barcode-badge"><ion-icon name="barcode-outline"></ion-icon>${barcode}</span>` : ''}
-                                ${location ? `<span class="location-badge"><ion-icon name="location-outline"></ion-icon>${location}</span>` : ''}
+                                ${location ? location.split(/[／/，,、\s]+/).filter(s => s).map(loc => `<span class="location-badge"><ion-icon name="location-outline"></ion-icon>${loc}</span>`).join('') : ''}
                                 ${lastStocktakeDate ? `前回: ${lastStocktakeDate.toLocaleDateString()} ` : ''}
                                 ${isRecent ? `<span class="stocktake-done-badge"><ion-icon name="checkmark"></ion-icon>完了</span>` : ''}
                             </div>
@@ -1880,15 +2440,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 card.innerHTML = `
                     <div class="card-header">
-                        <div class="product-thumb-container" onclick="showImageModal('${imageUrl}')">
+                        <div class="product-thumb-container" onclick="showImageModal('${(imageUrl || '').replace(/'/g, "\\'")}')">
                             ${imageUrl ? `<img src="${imageUrl}" loading="lazy">` : `<ion-icon name="image-outline"></ion-icon>`}
                         </div>
                         <div class="card-main-info">
-                            <div class="card-product-name clickable" onclick="navigateToTransactionForm('${itemName}', '${category}')">${itemName}</div>
+                            <div class="card-product-name clickable" onclick="navigateToTransactionForm('${(itemName || '').replace(/'/g, "\\'")}', '${(category || '').replace(/'/g, "\\'")}')">${itemName}</div>
+                            <div class="card-category-badge">${category}</div>
                             <div class="card-sub-info">
                                 ${itemID ? `<span class="id-badge">${itemID}</span>` : ''}
-                                ${barcode ? `<span class="barcode-badge">${barcode}</span>` : ''}
-                                ${location ? `<span class="location-badge"><ion-icon name="location-outline"></ion-icon>${location}</span>` : ''}
+                                ${barcode ? `<span class="barcode-badge"><ion-icon name="barcode-outline"></ion-icon>${barcode}</span>` : ''}
+                                ${location ? location.split(/[／/，,、\s]+/).filter(s => s).map(loc => `<span class="location-badge"><ion-icon name="location-outline"></ion-icon>${loc}</span>`).join('') : ''}
                             </div>
                         </div>
                         <div class="status-icon-wrap">
@@ -1907,7 +2468,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div class="stepper-placeholder"></div>
                         </div>
                         <div class="card-actions action-col" style="margin-top: 4px;">
-                            <button class="camera-btn" onclick="triggerPhotoUpload('${itemName}')" title="写真を登録/変更" style="margin-left:0;">
+                            <button class="camera-btn" onclick="triggerPhotoUpload('${(itemName || '').replace(/'/g, "\\'")}')" title="写真を登録/変更" style="margin-left:0;">
                                 <ion-icon name="camera-outline"></ion-icon>
                             </button>
                             <button class="update-mini-btn no-text btn-save-threshold ${isThresholdDirty ? 'is-dirty' : ''}" title="数値を確定待ちに追加">
@@ -2134,17 +2695,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log(`Scan Result: ${decodedText}`);
         stopScanner();
 
-        // 1. 場所QRコードの判定 (LOC-XXXX)
+        // 1. 場所QRコードの判定 (LOC-XXXX, LOC:XXXX, または名称そのまま)
+        const locationOptions = [
+            '1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1',
+            '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2',
+            '7_押入下1：サブ2', '8_押入下2：部品箱'
+        ];
+        
+        let targetLoc = null;
         if (decodedText.startsWith('LOC-')) {
-            const loc = decodedText.replace('LOC-', '');
+            targetLoc = decodedText.replace('LOC-', '');
+        } else if (decodedText.startsWith('LOC:')) {
+            targetLoc = decodedText.replace('LOC:', '');
+        } else if (locationOptions.includes(decodedText)) {
+            targetLoc = decodedText;
+        }
+
+        if (targetLoc) {
             const searchInput = document.getElementById('stock-search-input');
             if (searchInput) {
-                searchInput.value = loc;
+                // 在庫タブを表示
+                const invTabBtn = document.querySelector('.nav-item[data-target="inventory"]');
+                if (invTabBtn) invTabBtn.click();
+
+                // 検索窓に値をセット
+                searchInput.value = targetLoc;
                 searchInput.dispatchEvent(new Event('input')); // 検索実行
                 
-                // 在庫タブを表示
-                const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
-                if (invTabBtn) invTabBtn.click();
+                if (typeof showToast === 'function') showToast(`場所「${targetLoc}」で絞り込みました`, 'success');
             }
             return;
         }
@@ -2153,7 +2731,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const searchInput = document.getElementById('stock-search-input');
         if (searchInput) {
             // 在庫タブに切り替え
-            const invTabBtn = document.querySelector('.nav-item[data-tab="inventory"]');
+            const invTabBtn = document.querySelector('.nav-item[data-target="inventory"]');
             if (invTabBtn) invTabBtn.click();
 
             // 検索窓に値をセット
@@ -2423,8 +3001,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const idKey = Object.keys(item).find(k => k.endsWith('ID')) || 'ID';
         const id = item[idKey];
+        const itemName = item['品名'] || item['完成品名'] || '';
         const price = item['合計金額'] || item['価格'] || item['販売価格'] || item['小計'] || item['売上'] || 0;
         const formattedPrice = typeof price === 'number' ? price.toLocaleString() : price;
+
+        // M_画面制御の設定を取得するヘルパー
+        const getFieldSetting = (logicalId) => {
+            const masters = currentMasters['M_画面制御'] || [];
+            return masters.find(m => m['要素ID'] === logicalId) || {};
+        };
+
+        // 入力フィールド生成ヘルパー
+        const createInputHtml = (label, header, value, logicalId, typeOverride = null, isReadOnly = false) => {
+            const setting = getFieldSetting(logicalId);
+            const type = typeOverride || setting['タイプ'] || 'text';
+            
+            if (isReadOnly) {
+                const displayVal = (type === 'number' && typeof value === 'number') ? value.toLocaleString() : (value || '-');
+                return `<div class="input-group mini"><label>${label}</label><div class="static-value">${displayVal}</div></div>`;
+            }
+
+            // datalist ID の解決 (index.html の定義に合わせる)
+            let listId = '';
+            if (logicalId === 'buy-vendor') listId = 'supplier-list';
+            else if (logicalId === 'buy-payment') listId = 'payment-list';
+            else if (logicalId === 'exp-vendor') listId = 'vendor-list';
+            else if (logicalId === 'exp-account') listId = 'expense-category-list';
+            else if (logicalId === 'exp-payment') listId = 'expense-payment-list';
+            else if (setting['要素ID']) listId = setting['要素ID'] + '-list';
+
+            if (type === 'number') {
+                // 0 の場合は空にして placeholder で 0 を出すことで 0999 問題を回避
+                const valAttr = (value === 0 || value === '0' || !value) ? '' : value;
+                return `<div class="input-group mini"><label>${label}</label><input type="number" class="note-input" data-header="${header}" value="${valAttr}" placeholder="0" step="any"></div>`;
+            } else if (type === 'date') {
+                return `<div class="input-group mini"><label>${label}</label><input type="date" class="date-input" data-header="${header}" value="${formatISODate(value)}"></div>`;
+            } else {
+                const listAttr = listId ? `list="${listId}"` : '';
+                return `<div class="input-group mini"><label>${label}</label><input type="text" class="note-input" data-header="${header}" value="${value || ''}" ${listAttr}></div>`;
+            }
+        };
 
         let innerHTML = `
             <div class="history-card-header">
@@ -2447,7 +3063,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <span>部材追加</span>
                         </button>
                     ` : ''}
-                    <button class="update-mini-btn" data-id="${id}" title="変更を保存">
+                    <button class="update-mini-btn" data-id="${id}" data-tab="${tab}" data-item="${itemName}" 
+                        data-category="${item['区分'] || ''}" data-account="${item['仕訳'] || ''}" 
+                        data-current-status="${item['ステータス'] || ''}" 
+                        data-quantity="${item['数量'] || item['製造数量'] || 0}"
+                        data-price="${item['価格'] || item['合計金額'] || item['販売価格'] || 0}"
+                        data-vendor="${item['仕入先'] || item['購入先'] || ''}"
+                        data-payment="${item['支払方法'] || ''}"
+                        data-buyer="${item['売先'] || ''}"
+                        data-shipping="${item['発送方法'] || ''}"
+                        data-is-personal="${(item['管理対象外'] == 1 || item['管理区分'] == 1) ? 'true' : 'false'}"
+                        title="変更を保存">
                         <span>保存</span>
                         <ion-icon name="save-outline"></ion-icon>
                     </button>
@@ -2455,36 +3081,50 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
         `;
 
-        const itemName = item['品名'] || item['完成品名'] || '';
+
         const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === itemName);
         const imageUrl = itemInMaster ? itemInMaster['画像URL'] : null;
         const thumbHtml = imageUrl ? `<div class="product-thumb-container" style="width:30px; height:30px; margin-right:8px; border-radius:4px;" onclick="showImageModal('${imageUrl}')"><img src="${imageUrl}" loading="lazy"></div>` : '';
 
         if (tab === 'purchase') {
+            const isPlanned = (item['ステータス'] === '購入予定');
+            const isPending = (isPlanned && (!item['価格'] || !item['数量']));
             innerHTML += `
-                <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} (¥${formattedPrice}) 数量:${item['数量']}</div>
-                <div class="history-sub-info" style="margin-top: 4px; margin-bottom: 8px; font-size: 0.9em; color: var(--text-secondary);">
-                    ${item['仕入先'] || ''} &nbsp;&nbsp; ${item['支払方法'] || ''} &nbsp;&nbsp; ${item['区分'] || ''}
+                <div class="history-product-info" style="display: flex; align-items: center;">
+                    ${thumbHtml}${itemName}
+                    ${isPending ? '<span class="badge badge-pending" style="margin-left:8px; font-size:10px;">情報未確定</span>' : ''}
                 </div>
                 <div class="history-inputs-grid">
-                    <div class="input-group mini"><label>仕入日</label><input type="date" class="date-input" data-header="仕入日" value="${formatISODate(item['仕入日'] || item['発注日'])}"></div>
-                    <div class="input-group mini"><label>入庫日</label><input type="date" class="date-input" data-header="入庫日" value="${formatISODate(item['入庫日'])}"></div>
-                    <div class="input-group mini" style="grid-column: span 2;">${generateStatusSelect(id, '仕入', item['ステータス'])}</div>
+                    ${createInputHtml('仕入日', '仕入日', item['仕入日'] || item['発注日'], 'buy-date', 'date', false)}
+                    ${createInputHtml('入庫日', '入庫日', item['入庫日'], 'buy-date', 'date', false)}
+                    ${createInputHtml('価格', '価格', item['価格'], 'buy-price', 'number', !isPlanned)}
+                    ${createInputHtml('数量', '数量', item['数量'], 'buy-quantity', 'number', !isPlanned)}
+                    ${createInputHtml('仕入先', '仕入先', item['仕入先'], 'buy-vendor', null, !isPlanned)}
+                    ${createInputHtml('支払方法', '支払方法', item['支払方法'], 'buy-payment', null, !isPlanned)}
+                    ${generateCategorySelect('区分', '仕入', item['区分'], !isPlanned)}
+                    <div class="input-group mini">${generateStatusSelect(id, '仕入', item['ステータス'])}</div>
                 </div>
                 <div class="history-note" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); font-size: 0.85em; color: var(--text-muted);">
                     <textarea class="note-input" data-header="備考" rows="2" style="width:100%; background:rgba(0,0,0,0.05); border:1px solid rgba(0,0,0,0.1); border-radius:4px; padding:4px;">${item['備考'] || item['note'] || ''}</textarea>
                 </div>
             `;
         } else if (tab === 'expense') {
+            const isPlanned = (item['ステータス'] === '購入予定');
+            const isPending = (isPlanned && (!item['合計金額'] || !item['数量']));
             innerHTML += `
-                <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} (¥${formattedPrice}) 数量:${item['数量']}</div>
-                <div class="history-sub-info" style="margin-top: 4px; margin-bottom: 8px; font-size: 0.9em; color: var(--text-secondary);">
-                    ${item['購入先'] || ''} &nbsp;&nbsp; ${item['支払方法'] || ''} &nbsp;&nbsp; ${item['仕訳'] || ''}
+                <div class="history-product-info" style="display: flex; align-items: center;">
+                    ${thumbHtml}${itemName}
+                    ${isPending ? '<span class="badge badge-pending" style="margin-left:8px; font-size:10px;">情報未確定</span>' : ''}
                 </div>
                 <div class="history-inputs-grid">
-                    <div class="input-group mini"><label>注文日</label><input type="date" class="date-input" data-header="注文日" value="${formatISODate(item['注文日'] || item['登録日'])}"></div>
-                    <div class="input-group mini"><label>完了日</label><input type="date" class="date-input" data-header="完了日" value="${formatISODate(item['完了日'])}"></div>
-                    <div class="input-group mini" style="grid-column: span 2;">${generateStatusSelect(id, '経費', item['ステータス'])}</div>
+                    ${createInputHtml('注文日', '注文日', item['注文日'] || item['登録日'], 'expense-date', 'date', false)}
+                    ${createInputHtml('完了日', '完了日', item['完了日'], 'expense-date', 'date', false)}
+                    ${createInputHtml('金額', '合計金額', item['合計金額'], 'exp-price', 'number', !isPlanned)}
+                    ${createInputHtml('数量', '数量', item['数量'], 'exp-quantity', 'number', !isPlanned)}
+                    ${createInputHtml('購入先', '購入先', item['購入先'], 'exp-vendor', null, !isPlanned)}
+                    ${createInputHtml('仕訳', '仕訳', item['仕訳'], 'exp-account', null, !isPlanned)}
+                    ${createInputHtml('支払方法', '支払方法', item['支払方法'], 'exp-payment', null, !isPlanned)}
+                    <div class="input-group mini">${generateStatusSelect(id, '経費', item['ステータス'])}</div>
                 </div>
                 <div class="history-inputs-grid" style="grid-template-columns: 1fr; margin-top: 5px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; color: var(--text-secondary); cursor: pointer;">
@@ -2522,8 +3162,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const trackingUrl = getTrackingUrl(item['発送方法'], item['追跡番号']);
             innerHTML += `
                 <div class="history-product-info" style="display: flex; align-items: center;">${thumbHtml}${itemName} 数量:${item['数量']} 価格:¥${formattedTotal}(単価:¥${formattedUnit}) 送料:¥${(item['送料'] || 0).toLocaleString()}</div>
-                <div class="history-sub-info" style="margin-top: 4px; margin-bottom: 8px; font-size: 0.9em; color: var(--text-muted);">
-                    注文日:${formatDate(item['販売開始日'])} &nbsp;&nbsp; ${item['発送方法'] || ''}
+                <div class="history-inputs-grid" style="margin-bottom: 8px;">
+                    ${createInputHtml('販売開始日', '販売開始日', item['販売開始日'], 'sales-date', 'date', false)}
+                    <div class="input-group mini"><label>発送方法</label><div class="static-value">${item['発送方法'] || '-'}</div></div>
                 </div>
                 <div class="process-steps-container">
                     <label class="group-label">取引工程日付</label>
@@ -2550,6 +3191,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         card.innerHTML = innerHTML;
+
+        // クリアボタンの適用
+        const textInputs = card.querySelectorAll('input[type="text"], input[type="number"]');
+        textInputs.forEach(input => addClearButton(input));
 
         // 保存ボタンにイベントをバインド
         const saveBtn = card.querySelector('.update-mini-btn');
@@ -2652,11 +3297,73 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<label>ステータス</label><select class="status-select">${options}</select>`;
     }
 
+    /**
+     * 区分（M_区分）のプルダウンを生成する
+     */
+    function generateCategorySelect(label, actionName, currentValue, isReadOnly) {
+        if (isReadOnly) {
+            return `<div class="input-group mini"><label>${label}</label><div class="static-value">${currentValue || '-'}</div></div>`;
+        }
+
+        // M_画面制御から設定を取得を試みる
+        const masters = currentMasters['M_画面制御'] || [];
+        const ctrl = masters.find(m => 
+            (m['画面名称'] === actionName || m['対象機能'] === actionName) && 
+            (m['画面上の項目名'] === label || m['項目名'] === label)
+        );
+
+        let options = '<option value="">選択してください</option>';
+
+        if (ctrl && (ctrl['タイプ'] === 'fixed' || ctrl['型'] === 'fixed')) {
+            const fixedStr = ctrl['固定値'] || ctrl['固定値の内容'] || '';
+            const fixedValues = fixedStr.split(',').map(v => v.trim()).filter(v => v);
+            options += fixedValues.map(val => {
+                const selected = val === currentValue ? 'selected' : '';
+                return `<option value="${val}" ${selected}>${val}</option>`;
+            }).join('');
+        } else {
+            const refMasterName = ctrl ? ctrl['参照マスタ'] : 'M_区分';
+            const masterData = currentMasters[refMasterName] || currentMasters['M_カテゴリ'] || currentMasters['M_区分'] || [];
+            
+            const categories = masterData
+                .filter(c => {
+                    // 使用FLGが1のもののみ
+                    if (parseInt(c['使用FLG']) === 0) return false;
+                    // 対象機能列があれば絞り込み、なければすべて通す
+                    if (c['対象機能'] && c['対象機能'] !== actionName) return false;
+                    return true;
+                })
+                .sort((a, b) => (a['表示順'] || 0) - (b['表示順'] || 0));
+
+            options += categories.map(c => {
+                // カラム名の揺れに対応 (区分名 / 区分名称 / 項目名 / カテゴリ)
+                const val = c['区分名'] || c['区分名称'] || c['項目名'] || c['仕訳名'] || c['カテゴリ'] || Object.values(c)[1]; 
+                if (!val) return '';
+                const selected = val === currentValue ? 'selected' : '';
+                return `<option value="${val}" ${selected}>${val}</option>`;
+            }).join('');
+        }
+
+        return `<div class="input-group mini"><label>${label}</label><select class="note-input" data-header="${label}">${options}</select></div>`;
+    }
+
     async function handleHistorySave(btn) {
+        const originalHTML = btn.innerHTML;
         const id = btn.getAttribute('data-id');
         const card = btn.closest('.history-card');
         const statusSelect = card.querySelector('.status-select');
         const newStatus = statusSelect ? statusSelect.value : '';
+        const oldStatus = btn.getAttribute('data-current-status') || '';
+
+        // ステータス変更時の確認 (提案33)
+        if (newStatus !== oldStatus) {
+            const criticalStatuses = ['完了', 'キャンセル', '入庫済み', '発送済み'];
+            if (criticalStatuses.includes(newStatus)) {
+                if (!confirm(`ステータスを「${newStatus}」に変更してもよろしいですか？`)) {
+                    return;
+                }
+            }
+        }
 
         // 追加: カード内の日付入力も取得
         const dateUpdates = {};
@@ -2671,9 +3378,90 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.querySelectorAll('.note-input').forEach(input => {
             const header = input.getAttribute('data-header');
             if (header) {
-                dateUpdates[header] = input.value;
+                let val = input.value;
+                // 数値項目は数値化
+                if (['価格', '数量', '合計金額'].includes(header)) {
+                    val = parseFloat(val) || 0;
+                }
+                dateUpdates[header] = val;
             }
         });
+
+        // 静的表示テキストも取得（非編集モード時の値を保持するため）
+        card.querySelectorAll('.static-value').forEach(div => {
+            const label = div.previousElementSibling;
+            if (label && label.tagName === 'LABEL') {
+                const header = label.textContent;
+                if (header && dateUpdates[header] === undefined) {
+                    let val = div.textContent;
+                    if (val === '-') val = '';
+                    // 通貨記号やカンマを除去して数値化
+                    if (['価格', '数量', '合計金額'].includes(header)) {
+                        val = parseFloat(val.replace(/[¥,]/g, '')) || 0;
+                    }
+                    dateUpdates[header] = val;
+                }
+            }
+        });
+
+        // 保存前のバリデーション (提案30)
+        const currentTab = btn.getAttribute('data-tab');
+        const sheetNameMap = {
+            'purchase': 'T_仕入',
+            'expense': 'T_経費',
+            'manufacturing': 'T_製造',
+            'sales': 'T_販売'
+        };
+        const sheetName = sheetNameMap[currentTab];
+        
+        if (sheetName) {
+            const isPlanned = (newStatus === '購入予定');
+            // 基礎データの構築
+            const finalData = {
+                status: newStatus,
+                item: btn.getAttribute('data-item'),
+                ...dateUpdates,
+                note: dateUpdates['備考'],
+                receipt: dateUpdates['レシート']
+            };
+
+            // シートごとの内部キーマッピング (validateData 用)
+            if (currentTab === 'purchase') {
+                finalData.date = dateUpdates['仕入日'] || dateUpdates['発注日'];
+                finalData.vendor = dateUpdates['仕入先'];
+                finalData.price = (isPlanned && (dateUpdates['価格'] === '' || dateUpdates['価格'] === undefined)) ? 0 : (parseFloat(dateUpdates['価格']) || 0);
+                finalData.quantity = (isPlanned && (dateUpdates['数量'] === '' || dateUpdates['数量'] === undefined)) ? 1 : (parseFloat(dateUpdates['数量']) || 0);
+                finalData.payment = dateUpdates['支払方法'];
+                finalData.category = dateUpdates['区分'] || btn.getAttribute('data-category');
+            } else if (currentTab === 'expense') {
+                finalData.date = dateUpdates['注文日'] || dateUpdates['登録日'];
+                finalData.vendor = dateUpdates['購入先'];
+                finalData.price = (isPlanned && (dateUpdates['合計金額'] === '' || dateUpdates['合計金額'] === undefined)) ? 0 : (parseFloat(dateUpdates['合計金額']) || 0);
+                finalData.quantity = (isPlanned && (dateUpdates['数量'] === '' || dateUpdates['数量'] === undefined)) ? 1 : (parseFloat(dateUpdates['数量']) || 0);
+                finalData.payment = dateUpdates['支払方法'];
+                finalData.account = dateUpdates['仕訳'] || btn.getAttribute('data-account');
+            } else if (currentTab === 'manufacturing') {
+                finalData.date = dateUpdates['製造開始日'];
+                finalData.quantity = parseFloat(btn.getAttribute('data-quantity')) || 0;
+            } else if (currentTab === 'sales') {
+                finalData.date = dateUpdates['販売開始日'];
+                finalData.buyer = dateUpdates['売先'] || btn.getAttribute('data-buyer');
+                finalData.shipping = dateUpdates['発送方法'] || btn.getAttribute('data-shipping');
+                finalData.shippingCost = parseFloat(dateUpdates['送料']) || 0;
+                finalData.quantity = parseFloat(btn.getAttribute('data-quantity')) || 0;
+                finalData.price = parseFloat(btn.getAttribute('data-price')) || 0;
+                finalData.type = btn.getAttribute('data-is-personal') === 'true' ? 'personal' : 'business';
+            }
+
+            const error = validateData(sheetName, finalData, true);
+            if (error) {
+                alert(error);
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                setLoading(false);
+                return;
+            }
+        }
 
         // チェックボックスの取得
         card.querySelectorAll('.chk-input').forEach(chk => {
@@ -2683,7 +3471,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        const originalHTML = btn.innerHTML;
         btn.innerHTML = '<ion-icon name="sync-outline" class="spinning"></ion-icon>';
         btn.disabled = true;
         setLoading(true, 'データを更新中...');
@@ -2810,7 +3597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             // 個人用売上の集計
-            const psData = lastHistoryData.personalSalesByMonth || {};
+            const psData = (lastHistoryData && lastHistoryData.personalSalesByMonth) || {};
             for (const ym in psData) {
                 const [y, m] = ym.split('-');
                 if (String(y) === String(targetY)) {
@@ -2871,8 +3658,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const profitYearHTML = isFY ? '' : getGrowthHTML(calcRate(current.profit, lastYear.profit), yearLabel);
 
             const pSales = current.personalSales || 0;
-            const salesTotalHTML = `¥${Math.round(current.sales).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:0.75em;color:var(--text-muted);">(¥${Math.round(current.sales + pSales).toLocaleString()})</span>` : ''}`;
-            const profitTotalHTML = `¥${Math.round(current.profit).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:0.75em;color:var(--text-muted);">(¥${Math.round(current.profit + pSales).toLocaleString()})</span>` : ''}`;
+            const salesTotalHTML = `¥${Math.round(current.sales).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:12px;color:var(--text-muted);">(¥${Math.round(current.sales + pSales).toLocaleString()})</span>` : ''}`;
+            const profitTotalHTML = `¥${Math.round(current.profit).toLocaleString()}${pSales > 0 ? `<br><span style="font-size:12px;color:var(--text-muted);">(¥${Math.round(current.profit + pSales).toLocaleString()})</span>` : ''}`;
 
             summaryCards.innerHTML = `
                 <div class="mini-summary-card income">
@@ -3066,6 +3853,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 明細リスト (Details用)
         const ledgerBody = document.getElementById('ledger-list-body');
         if (ledgerBody) {
+            let tableSalesTotal = 0;
+            let tableCostTotal = 0;
+            let tableProfitTotal = 0;
+
             ledgerBody.innerHTML = filteredLedger.length > 0 ? filteredLedger.map(row => {
                 const s = parseNumber(row['売上']);
                 const p = parseNumber(row['仕入']);
@@ -3075,7 +3866,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const d = parseNumber(row['諸会費']);
                 const f = parseNumber(row['支払手数料']);
                 const ms = parseNumber(row['雑費']);
-                const rowProfit = s - (p + c + r + sp + d + f + ms);
+                
+                const rowCost = p + c + r + sp + d + f + ms;
+                const rowProfit = s - rowCost;
+
+                tableSalesTotal += s;
+                tableCostTotal += rowCost;
+                tableProfitTotal += rowProfit;
 
                 const itemName = row['品名'] || "-";
 
@@ -3101,10 +3898,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const rounded = Math.round(val || 0);
                 if (el) el.textContent = rounded > 0 ? '¥' + rounded.toLocaleString() : (rounded < 0 ? '-¥' + Math.abs(rounded).toLocaleString() : '0');
             };
-            const totals = current;
-            updateEl('ledger-total-sales', totals.sales);
-            updateEl('ledger-total-purchase', totals.cost);
-            updateEl('ledger-total-profit', totals.profit);
+            
+            // 明細表のフッターは、表内の合計値と一致させる
+            updateEl('ledger-total-sales', tableSalesTotal);
+            updateEl('ledger-total-purchase', tableCostTotal);
+            updateEl('ledger-total-profit', tableProfitTotal);
         }
 
         if (!window.ledgerInitialized) {
@@ -3483,23 +4281,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isCritical = qty === 0;
             const cardClass = isCritical ? 'critical' : 'warning';
 
-            // 進行中の取引があるか確認 (件数ではなく合計数量を表示するように変更)
+            // 進行中の取引があるか確認 (Proposal 20/24 拡張)
             const mfgTotal = activeMfg.filter(m => {
                 const name = (m['完成品名'] || m['品名'] || m['商品名'] || '').toString().trim();
-                return name === itemName.trim();
+                return name === itemName.trim() && !['完了', 'キャンセル'].includes(m['ステータス']);
             }).reduce((sum, m) => sum + (parseFloat(m['数量'] || m['製造数量']) || 0), 0);
             
             const purTotal = activePur.filter(p => {
-                const name = (p['品名'] || p['商品名'] || p['完成品名'] || '').toString().trim();
-                return name === itemName.trim();
+                const name = (p['品名'] || p['商品名'] || '').toString().trim();
+                // 「注文済み」のみを仕入中とする（購入予定は別途集計）
+                return name === itemName.trim() && p['ステータス'] === '注文済み';
             }).reduce((sum, p) => sum + (parseFloat(p['数量']) || 0), 0);
+
+            // 購入予定の集計 (仕入・経費の両方を対象)
+            const activeExp = lastHistoryData.history['T_経費'] || [];
+            const plannedTotal = [...activePur, ...activeExp].filter(item => {
+                const name = (item['品名'] || '').toString().trim();
+                return name === itemName.trim() && item['ステータス'] === '購入予定';
+            }).reduce((sum, item) => sum + (parseFloat(item['数量']) || 0), 0);
             
             let statusBadge = '';
+            let badges = [];
             if (mfgTotal > 0) {
-                statusBadge = `<span class="alert-processing-badge mfg"><ion-icon name="hammer-outline"></ion-icon>製造中(${mfgTotal})</span>`;
-            } else if (purTotal > 0) {
-                statusBadge = `<span class="alert-processing-badge pur"><ion-icon name="cart-outline"></ion-icon>仕入中(${purTotal})</span>`;
+                badges.push(`<span class="alert-processing-badge mfg"><ion-icon name="hammer-outline"></ion-icon>製造中(${mfgTotal})</span>`);
             }
+            if (purTotal > 0) {
+                badges.push(`<span class="alert-processing-badge pur"><ion-icon name="cart-outline"></ion-icon>仕入中(${purTotal})</span>`);
+            }
+            if (plannedTotal > 0) {
+                badges.push(`<span class="alert-processing-badge planned"><ion-icon name="calendar-outline"></ion-icon>購入予定(${plannedTotal})</span>`);
+            }
+            statusBadge = badges.join('');
 
             // M_商品からカテゴリ情報を取得
             const product = (currentMasters['M_商品'] || []).find(m => {
@@ -3509,9 +4321,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const category = product ? product['カテゴリ'] : "";
 
             const isMade = (category === '商品' || category === 'パーツ2');
-            const actionBtn = isMade ?
-                `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${itemName}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>` :
-                `<button class="alert-btn purchase" onclick="jumpToTab('purchase', '${itemName}')"><ion-icon name="cart-outline"></ion-icon>仕入へ</button>`;
+            const isExpense = (category === '経費');
+            
+            let actionBtn = '';
+            if (isMade) {
+                actionBtn = `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${itemName}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>`;
+            } else if (isExpense) {
+                actionBtn = `<button class="alert-btn expense" onclick="jumpToTab('expense', '${itemName}')"><ion-icon name="cash-outline"></ion-icon>経費へ</button>`;
+            } else {
+                actionBtn = `<button class="alert-btn purchase" onclick="jumpToTab('purchase', '${itemName}')"><ion-icon name="cart-outline"></ion-icon>仕入へ</button>`;
+            }
 
             html += `
                 <div class="alert-card ${cardClass}">
@@ -3536,7 +4355,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * 特定のタブへ遷移し、品目を選択済みにする
+     * 特定のタブへ遷移し、品目を選択済みにする (Proposal 36 拡張)
      */
     window.jumpToTab = function (tabId, itemName) {
         const navItem = document.querySelector(`.nav-item[data-target="${tabId}"]`);
@@ -3545,10 +4364,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // タブ切り替えのアニメーション待ち
             setTimeout(() => {
-                const map = { purchase: 'buy-item', manufacturing: 'make-item' };
-                const el = document.getElementById(map[tabId]);
+                const map = { purchase: 'buy-item', manufacturing: 'make-item', expense: 'exp-item' };
+                const inputId = map[tabId];
+                const el = document.getElementById(inputId);
                 if (el) {
                     el.value = itemName;
+                    
+                    // 履歴から詳細データを自動セット (Proposal 36)
+                    autoPopulateFromHistory(tabId, itemName);
+
                     // 入力イベントを発火させて連動するロジック（プレビュー表示など）を動かす
                     el.dispatchEvent(new Event('input'));
                     el.dispatchEvent(new Event('change'));
@@ -3557,9 +4381,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     el.focus();
                 }
-            }, 100);
+            }, 150);
         }
     };
+
+    /**
+     * 履歴から最新の値を自動補完する (Proposal 36共通)
+     */
+    function autoPopulateFromHistory(tabId, itemName) {
+        if (tabId === 'purchase' || tabId === 'expense') {
+            const historyKey = tabId === 'purchase' ? 'T_仕入' : 'T_経費';
+            const historyData = (window.lastHistoryData && window.lastHistoryData.history) ? window.lastHistoryData.history[historyKey] : [];
+            const latest = historyData.find(r => r['品名'] === itemName);
+
+            if (latest) {
+                if (tabId === 'purchase') {
+                    setElementValue('buy-vendor', latest['仕入先']);
+                    setElementValue('buy-price', latest['価格']);
+                    setElementValue('buy-quantity', latest['数量']);
+                    setElementValue('buy-payment', latest['支払方法']);
+                    setElementValue('buy-category', latest['区分']);
+                } else if (tabId === 'expense') {
+                    setElementValue('exp-account', latest['仕訳']);
+                    setElementValue('exp-vendor', latest['購入先']);
+                    setElementValue('exp-price', latest['合計金額']);
+                    setElementValue('exp-quantity', latest['数量']);
+                    setElementValue('exp-payment', latest['支払方法']);
+                    const manageFlag = document.getElementById('exp-is-stock');
+                    if (manageFlag) manageFlag.checked = (latest['管理対象'] == 1);
+                }
+            }
+        } else if (tabId === 'manufacturing') {
+            setElementValue('make-quantity', "1");
+        }
+    }
+
+    // ヘルパー: 要素が存在する場合のみ値をセットしてイベントを発火
+    function setElementValue(id, value) {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== null) {
+            el.value = value;
+            el.dispatchEvent(new Event('input'));
+            el.dispatchEvent(new Event('change'));
+        }
+    }
 
     /**
      * マスタの抽出条件を解析してデータをフィルタリングする (Proposal 5)
@@ -3684,26 +4549,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('master-edit-cancel').addEventListener('click', () => editModal.classList.remove('active'));
     }
 
-    function renderMasterList() {
+    function renderMasterList(mode = 'all') {
         const container = document.querySelector('.master-list-grid');
+        const title = document.getElementById('settings-title');
         if (!container) return;
 
+        if (title) {
+            title.textContent = (mode === 'master') ? 'マスタ管理' : 
+                              (mode === 'system') ? 'システム設定' : '設定・マスタ管理';
+        }
+
         const masterConfig = {
-            'M_商品': { title: '商品・パーツ', icon: 'cube-outline' },
-            'M_仕入先': { title: '仕入先・購入先', icon: 'business-outline' },
-            'M_売先': { title: '販売先(顧客)', icon: 'people-outline' },
-            'M_BOM': { title: '製造レシピ(BOM)', icon: 'construct-outline' },
-            'M_発送': { title: '配送・送料', icon: 'bus-outline' },
-            'M_経費品名': { title: '経費科目名', icon: 'receipt-outline' },
-            'M_支払': { title: '支払方法', icon: 'wallet-outline' },
-            'T_在庫集計': { title: 'アラート設定(在庫閾値)', icon: 'notifications-outline' },
-            'M_ステータス': { title: 'ステータス定義', icon: 'flag-outline' },
-            'M_画面制御': { title: '画面入力制御', icon: 'options-outline' }
+            'M_商品': { title: '商品・パーツ', icon: 'cube-outline', type: 'master' },
+            'M_仕入先': { title: '仕入先・購入先', icon: 'business-outline', type: 'master' },
+            'M_売先': { title: '販売先(顧客)', icon: 'people-outline', type: 'master' },
+            'M_BOM': { title: '製造レシピ(BOM)', icon: 'construct-outline', type: 'master' },
+            'M_発送': { title: '配送・送料', icon: 'bus-outline', type: 'master' },
+            'M_経費品名': { title: '経費科目名', icon: 'receipt-outline', type: 'master' },
+            'M_支払': { title: '支払方法', icon: 'wallet-outline', type: 'master' },
+            'M_ステータス': { title: 'ステータス定義', icon: 'flag-outline', type: 'system' },
+            'M_画面制御': { title: '画面入力制御', icon: 'options-outline', type: 'system' },
+            'T_在庫集計': { title: 'アラート設定(在庫閾値)', icon: 'notifications-outline', type: 'system' }
         };
 
         container.innerHTML = '';
         Object.keys(masterConfig).forEach(mkey => {
             const conf = masterConfig[mkey];
+            
+            // モードによるフィルタリング
+            if (mode !== 'all' && conf.type !== mode) return;
+
             const card = document.createElement('div');
             card.className = 'master-card';
             card.innerHTML = `
@@ -3935,6 +4810,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }).join('')}
                     </select>
                 `;
+            } else if (type === 'multiselect') {
+                const currentVals = value ? value.toString().split(',').map(s => s.trim()) : [];
+                let options = [];
+                if (fieldConfig.options) {
+                    options = fieldConfig.options;
+                } else if (fieldConfig.refMaster) {
+                    const refData = currentMasters[fieldConfig.refMaster] || [];
+                    const filteredRef = fieldConfig.filter ? refData.filter(fieldConfig.filter) : refData;
+                    options = filteredRef.map(r => r['品名'] || r[Object.keys(r)[0]]);
+                }
+                
+                inputHtml = `
+                    <div class="multiselect-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; padding: 5px 0;">
+                        ${options.map((opt, i) => {
+                            const val = typeof opt === 'object' ? opt.v : opt;
+                            const lbl = typeof opt === 'object' ? opt.l : opt;
+                            const checked = currentVals.includes(String(val)) ? 'checked' : '';
+                            return `
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; font-weight: normal; margin: 0;">
+                                    <input type="checkbox" name="${key}" value="${val}" ${checked} ${!isEditable ? 'disabled' : ''}>
+                                    ${lbl}
+                                </label>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
             } else if (type === 'textarea') {
                 inputHtml = `<textarea name="${key}" ${!isEditable ? 'readonly class="readonly-field"' : ''}>${value !== undefined ? value : ''}</textarea>`;
             } else if (key === 'QR/バーコード') {
@@ -3979,6 +4880,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (type === 'switch') {
                     const checkbox = form.querySelector(`input[name="${key}"]`);
                     value = checkbox.checked ? 1 : 0;
+                } else if (type === 'multiselect') {
+                    const checkboxes = form.querySelectorAll(`input[name="${key}"]:checked`);
+                    value = Array.from(checkboxes).map(cb => cb.value).join(', ');
                 } else {
                     const element = form.querySelector(`[name="${key}"]`);
                     value = element ? element.value.trim() : '';
@@ -4183,6 +5087,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const input = document.getElementById(inputId);
         if (input) {
             input.value = itemName;
+
+            // 履歴から詳細データを自動セット (Proposal 36)
+            autoPopulateFromHistory(targetTab, itemName);
+
             input.dispatchEvent(new Event('change'));
             input.dispatchEvent(new Event('input')); // datalist用
         }
@@ -4243,6 +5151,279 @@ document.addEventListener('DOMContentLoaded', async () => {
         overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
         setTimeout(() => overlay.classList.add('active'), 10);
+    }
+
+    /**
+     * 製造開始画面でのBOM在庫チェック (提案対応)
+     */
+    function updateBOMCheck(itemName, targetQtyStr) {
+        const container = document.getElementById('bom-check-container');
+        const resultList = document.getElementById('bom-check-result');
+        if (!container || !resultList) return;
+
+        const targetQty = parseFloat(targetQtyStr);
+        if (!itemName || isNaN(targetQty) || targetQty <= 0) {
+            container.style.display = 'none';
+            resultList.innerHTML = '';
+            return;
+        }
+
+        // BOMデータの取得 (M_BOM)
+        const bomData = (currentMasters['M_BOM'] || []).filter(b => b['品名'] === itemName);
+        if (bomData.length === 0) {
+            container.style.display = 'none';
+            resultList.innerHTML = '';
+            return;
+        }
+
+        container.style.display = 'block';
+        resultList.innerHTML = '';
+        let allOk = true;
+
+        bomData.forEach(bom => {
+            const componentName = bom['部品'];
+            const neededPerOne = parseFloat(bom['数量']) || 0;
+            const totalNeeded = neededPerOne * targetQty;
+            
+            // 現在庫の取得 (T_在庫集計)
+            const stockItem = (currentMasters['T_在庫集計'] || []).find(s => s['品名'] === componentName);
+            const currentStock = stockItem ? parseFloat(stockItem['現在庫数']) || 0 : 0;
+            
+            const isOk = currentStock >= totalNeeded;
+            if (!isOk) allOk = false;
+
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'bom-item-status';
+            itemDiv.innerHTML = `
+                <span class="bom-item-name">${componentName}</span>
+                <span class="bom-item-qty ${isOk ? 'ok' : 'ng'}">
+                    ${totalNeeded} / 在庫:${currentStock}
+                </span>
+            `;
+            resultList.appendChild(itemDiv);
+        });
+
+        const summary = document.createElement('div');
+        summary.className = `bom-status-summary ${allOk ? 'ok' : 'ng'}`;
+        summary.innerHTML = allOk ? 
+            '<ion-icon name="checkmark-circle" style="vertical-align: middle; margin-right: 4px;"></ion-icon> 在庫はすべて足りています' : 
+            '<ion-icon name="warning-outline" style="vertical-align: middle; margin-right: 4px;"></ion-icon> 一部の部品が不足しています';
+        resultList.appendChild(summary);
+    }
+
+    // --- Registration Basket Logic (Proposal 38) ---
+
+    /**
+     * 現在の入力内容を買い物カゴに追加
+     */
+    window.addItemToBasket = function(type) {
+        const prefix = type === 'purchase' ? 'buy' : 'exp';
+        const data = {};
+        
+        // 共通・個別項目の取得
+        if (type === 'purchase') {
+            data.date = document.getElementById('purchase-date').value;
+            data.status = document.getElementById('buy-status-entry').value;
+            data.vendor = document.getElementById('buy-vendor').value;
+            data.item = document.getElementById('buy-item').value;
+            data.price = parseFloat(document.getElementById('buy-price').value) || 0;
+            data.quantity = parseFloat(document.getElementById('buy-quantity').value) || 0;
+            data.payment = document.getElementById('buy-payment').value;
+            data.category = document.getElementById('buy-category').value;
+            data.note = document.getElementById('buy-note').value;
+        } else {
+            data.date = document.getElementById('expense-date').value;
+            data.status = document.getElementById('exp-status-entry').value;
+            data.account = document.getElementById('exp-account').value;
+            data.vendor = document.getElementById('exp-vendor').value;
+            data.item = document.getElementById('exp-item').value;
+            data.price = parseFloat(document.getElementById('exp-price').value) || 0;
+            data.quantity = parseFloat(document.getElementById('exp-quantity').value) || 0;
+            data.payment = document.getElementById('exp-payment').value;
+            data.receipt = document.getElementById('exp-receipt').checked ? 1 : 0;
+            data.isStock = document.getElementById('exp-is-stock').checked ? 1 : 0;
+            data.note = document.getElementById('exp-note').value;
+        }
+
+        // 基本バリデーション
+        if (!data.item || data.price <= 0 || data.quantity <= 0) {
+            alert("品名、価格、数量を正しく入力してください。");
+            return;
+        }
+
+        // カゴに追加
+        window.registrationBasket.push({ type, data });
+        
+        // 入力欄のクリア（共通項目以外）
+        document.getElementById(`${prefix}-item`).value = "";
+        document.getElementById(`${prefix}-price`).value = "";
+        document.getElementById(`${prefix}-quantity`).value = "";
+        document.getElementById(`${prefix}-note`).value = "";
+        const previewEl = document.getElementById(`${prefix}-item-preview`);
+        if (previewEl) previewEl.innerHTML = "";
+
+        renderBasket();
+        
+        // フィードバック
+        const btn = document.getElementById(`${prefix}-add-basket`);
+        if (btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<ion-icon name="checkmark-done-outline"></ion-icon> 追加しました';
+            setTimeout(() => { btn.innerHTML = originalText; }, 1500);
+        }
+    };
+
+    /**
+     * 買い物カゴの内容をレンダリング
+     */
+    function renderBasket() {
+        const sections = ['purchase', 'expense'];
+        const basket = window.registrationBasket;
+        const total = basket.reduce((sum, item) => sum + item.data.price, 0);
+
+        sections.forEach(tab => {
+            const container = document.getElementById(`basket-section-${tab}`);
+            const list = document.getElementById(`basket-list-${tab}`);
+            const totalEl = document.getElementById(`basket-total-${tab}`);
+            if (!container || !list || !totalEl) return;
+
+            if (basket.length === 0) {
+                container.classList.remove('active');
+                return;
+            }
+
+            container.classList.add('active');
+            totalEl.textContent = `¥${total.toLocaleString()}`;
+
+            list.innerHTML = basket.map((item, index) => `
+                <div class="basket-item">
+                    <div class="basket-item-info">
+                        <div class="basket-item-name">
+                            <span class="basket-badge ${item.type}">${item.type === 'purchase' ? '仕入' : '経費'}</span>
+                            ${item.data.item}
+                        </div>
+                        <div class="basket-item-details">
+                            <span>単価: ¥${Math.round(item.data.price / item.data.quantity).toLocaleString()}</span>
+                            <span>数量: ${item.data.quantity}</span>
+                        </div>
+                    </div>
+                    <div class="basket-item-price">¥${item.data.price.toLocaleString()}</div>
+                    <div class="basket-item-remove" onclick="removeFromBasket(${index})">
+                        <ion-icon name="close-circle-outline"></ion-icon>
+                    </div>
+                </div>
+            `).join('');
+        });
+    }
+
+    /**
+     * カゴからアイテムを削除
+     */
+    window.removeFromBasket = function(index) {
+        window.registrationBasket.splice(index, 1);
+        renderBasket();
+    };
+
+    /**
+     * カゴを空にする
+     */
+    window.clearBasket = function() {
+        if (!confirm("リストの内容をすべて破棄しますか？")) return;
+        window.registrationBasket = [];
+        renderBasket();
+    };
+
+    /**
+     * 一括登録を実行
+     */
+    window.submitBulkRegistration = async function() {
+        if (window.registrationBasket.length === 0) return;
+        
+        const total = window.registrationBasket.reduce((sum, item) => sum + item.data.price, 0);
+        if (!confirm(`${window.registrationBasket.length}件の明細（合計 ¥${total.toLocaleString()}）を一括登録しますか？`)) return;
+
+        setLoading(true, "一括登録中...");
+        try {
+            const result = await fetchAPI('registerBulk', { 
+                transactions: window.registrationBasket,
+                scope: 'all'
+            });
+
+            if (result.status === 'success') {
+                showToast("一括登録が完了しました。");
+                window.registrationBasket = [];
+                renderBasket();
+                
+                // 履歴・在庫データの更新フローを既存処理(handleSubmission)と同期
+                if (result.historyData && result.historyData.rawData) {
+                    // 生データをマージ
+                    lastRawData = Object.assign({}, lastRawData, result.historyData.rawData);
+                    // データを加工・再集計
+                    const processed = processClientData(lastRawData);
+                    lastHistoryData = processed;
+                    // 各履歴画面を描画
+                    renderAllHistory(processed);
+                    // 在庫一覧UIを更新
+                    refreshInventoryUI();
+                }
+
+                // 新規マスタ追加があった場合
+                if (result.masterAdded) {
+                    initSystem();
+                }
+                
+                // フォームをリセット（共通項目も含む）
+                const buyVendor = document.getElementById('buy-vendor');
+                if (buyVendor) buyVendor.value = "";
+                const expVendor = document.getElementById('exp-vendor');
+                if (expVendor) expVendor.value = "";
+                
+            } else {
+                showToast("登録エラー: " + result.message, 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("通信エラー: " + e.toString(), 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // イベントリスナーの設定
+    const buyAddBtn = document.getElementById('buy-add-basket');
+    if (buyAddBtn) buyAddBtn.onclick = () => window.addItemToBasket('purchase');
+    
+    const expAddBtn = document.getElementById('exp-add-basket');
+    if (expAddBtn) expAddBtn.onclick = () => window.addItemToBasket('expense');
+    
+    document.querySelectorAll('.bulk-submit-btn').forEach(btn => {
+        btn.onclick = window.submitBulkRegistration;
+    });
+    document.querySelectorAll('.bulk-clear-btn').forEach(btn => {
+        btn.onclick = window.clearBasket;
+    });
+
+    /**
+     * ---- スクロール位置に応じたトップへ戻るボタンの制御 (提案42) ----
+     */
+    const contentArea = document.getElementById('content-area');
+    const scrollBtn = document.getElementById('scroll-to-top-btn');
+
+    if (contentArea && scrollBtn) {
+        contentArea.addEventListener('scroll', () => {
+            if (contentArea.scrollTop > 300) {
+                scrollBtn.classList.add('visible');
+            } else {
+                scrollBtn.classList.remove('visible');
+            }
+        });
+
+        scrollBtn.addEventListener('click', () => {
+            contentArea.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
     }
 
 });
