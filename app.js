@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (qsCloseBtn) qsCloseBtn.onclick = closeQuickSearch;
         
         const qsInput = document.getElementById('quick-search-input');
-        if (qsInput) qsInput.oninput = window.applyQuickSearchFilter;
+        if (qsInput) qsInput.oninput = () => { if (typeof window.applyQuickSearchFilter === 'function') window.applyQuickSearchFilter(); };
 
         // クイック検索モーダル外クリックで閉じる
         window.onclick = function(event) {
@@ -1241,6 +1241,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 elm = input;
             }
 
+            // タイプが select/fixed なのに HTML が INPUT の場合、SELECT に置換する
+            if ((type === 'select' || type === 'fixed') && elm.tagName === 'INPUT') {
+                const select = document.createElement('select');
+                select.id = elmId;
+                select.className = elm.className;
+                if (elm.value) {
+                    const opt = document.createElement('option');
+                    opt.value = elm.value;
+                    opt.textContent = elm.value;
+                    opt.selected = true;
+                    select.appendChild(opt);
+                }
+                elm.parentNode.replaceChild(select, elm);
+                elm = select;
+            }
+
             if (type === 'fixed') {
                 const options = (ctrl['固定値の内容'] || "").split(',').map(s => s.trim());
                 populateElement(elm, type, options);
@@ -2031,6 +2047,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (sheet === 'T_販売') {
                         const qtyInput = document.getElementById('sale-quantity');
                         if (qtyInput) qtyInput.value = '1';
+
+                        // 品名・数量をリセット後に input イベントを発火させて
+                        // 在庫OKの表示コンテナを初期化する
+                        const itemInput = document.getElementById('sale-item');
+                        if (itemInput) {
+                            itemInput.dispatchEvent(new Event('input', { bubbles: true }));
+                            itemInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
                     }
 
                     // 商品写真プレビューもクリア
