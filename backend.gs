@@ -335,6 +335,7 @@ function registerTransaction(sheetName, data, scope = 'all') {
   });
 
   sheet.appendRow(rowData);
+  SpreadsheetApp.flush();
   DataCache.clear(sheetName); 
   
   const newRowIdx = sheet.getLastRow();
@@ -471,6 +472,7 @@ function updateTransaction(id, updates, scope = 'all') {
 
   if (oldStatus !== newStatus) {
     // 単価更新後なので再度キャッシュをクリアして最新行を取得
+    SpreadsheetApp.flush();
     DataCache.clear(sheetName);
     const updatedRow = getRowAsObject(sheet, rowIndex + 1);
     handleStatusLogic(sheetName, id, newStatus, updatedRow, oldStatus);
@@ -490,6 +492,8 @@ function updateTransaction(id, updates, scope = 'all') {
   if (id.startsWith('M') || id.startsWith('S')) {
     updateInventorySummary();
   }
+
+  SpreadsheetApp.flush();
 
   return { 
     status: 'success', 
@@ -762,6 +766,7 @@ function handleStatusLogic(sheetName, id, status, currentData, oldStatus = null)
         if (colIdx !== -1) {
             saleSheet.getRange(rowIdx + 1, colIdx + 1).setValue(unitCost);
             formatColumn(saleSheet, rowIdx + 1, '合計単価', '0.00');
+            currentData['合計単価'] = unitCost;
         }
       }
     }
@@ -970,8 +975,8 @@ function revertFIFO(triggerId) {
         '数量': Math.abs(qty),
         '単価': unitPrice,
         '引当元管理ID': sourceId,
-        '引当完了': 0,
-        '実在庫数量': Math.abs(qty),
+        '引当完了': 1,
+        '実在庫数量': 0,
         '備考': `取消: ${triggerId}`
       };
       if (triggerId.startsWith('P')) cancelRow['仕入ID'] = triggerId;
@@ -1076,7 +1081,12 @@ function syncToLedger(sheetName, id, data) {
   if (sheetName === 'T_販売') {
     const buyer = data['売先'] || "";
     const item = data['品名'] || "";
-    if (descCol !== -1) row[descCol] = buyer ? `${buyer} ${item}` : item; // 売先 + 品名
+    const qty = parseFloat(data['数量']) || 1;
+    let desc = buyer ? `${buyer} ${item}` : item;
+    if (qty > 1) {
+      desc += "×" + qty;
+    }
+    if (descCol !== -1) row[descCol] = desc; // 売先 + 品名 (複数時は数量付与)
     
     if (incomeCol !== -1) row[incomeCol] = price; // 売上
     if (costCol !== -1) row[costCol] = parseFloat(data['合計単価']) || 0; // 仕入（原価）
@@ -1212,6 +1222,7 @@ function updateInventorySummary() {
   if (newRows.length > 0) {
     sumSheet.getRange(sumSheet.getLastRow() + 1, 1, newRows.length, sumHeaders.length).setValues(newRows);
   }
+  SpreadsheetApp.flush();
   DataCache.clear('T_在庫集計');
 }
 

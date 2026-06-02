@@ -4413,7 +4413,7 @@ th.sticky-col {
     font-size: 24px;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    z-index: 99;
+    z-index: 45;
     opacity: 0;
     visibility: hidden;
     transform: translateY(20px);
