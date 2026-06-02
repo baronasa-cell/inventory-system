@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("System initialization started... (v2.2-QR-LayoutFixed)");
-    
+
     // ---- API Configuration ----
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzexidaVzlRQ1_StDZo6Oo_oOt9TtX33Nk2sPwbo-oDzuRW6_Tbt2_zQxlxv-Ctr4jZuA/exec';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzY_IuQn_5tG_bGBP459xIPoekQoeEdxEo5nfIO3yeC8chmyHicQNzjgseGXtlol2q0SA/exec';
     let currentAuthKey = localStorage.getItem('inventory_auth_key') || '';
     let useMock = false;
 
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             fields: [
                 { name: '表示順', type: 'number', visible: true, editable: true, required: true },
                 { name: '仕入先', type: 'text', visible: true, editable: false, required: true },
-                { name: '用途区分', type: 'select', visible: true, editable: true, options: [{v:1, l:'1:仕入のみ'}, {v:2, l:'2:経費のみ'}, {v:3, l:'3:両方'}], required: true },
+                { name: '用途区分', type: 'select', visible: true, editable: true, options: [{ v: 1, l: '1:仕入のみ' }, { v: 2, l: '2:経費のみ' }, { v: 3, l: '3:両方' }], required: true },
                 { name: '説明', type: 'textarea', visible: true, editable: true, required: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true }
             ]
@@ -78,8 +78,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         'M_BOM': {
             key: '品名',
             fields: [
-                { name: '品名', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>r['カテゴリ']==='商品', required: true },
-                { name: '部品', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r)=>['パーツ','単体商品'].includes(r['カテゴリ']), required: true },
+                { name: '品名', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r) => r['カテゴリ'] === '商品', required: true },
+                { name: '部品', type: 'select', visible: true, editable: false, refMaster: 'M_商品', filter: (r) => ['パーツ', '単体商品'].includes(r['カテゴリ']), required: true },
                 { name: '数量', type: 'number', visible: true, editable: true, required: true },
                 { name: '説明', type: 'textarea', visible: true, editable: true, required: false }
             ]
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { name: '最終更新日', visible: false, required: false },
                 { name: '使用FLG', type: 'switch', visible: true, editable: true, required: true },
                 { name: '最終棚卸日', type: 'text', visible: true, editable: false, required: false },
-                { name: '商品ID', type: 'text', visible: true, editable: false, required: true }, 
+                { name: '商品ID', type: 'text', visible: true, editable: false, required: true },
                 { name: '保管場所', type: 'select', options: ['1_棚上：メイン', '2_棚中：サブ1', '3_棚下：梱包1', '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2', '7_押入下1：サブ2', '8_押入下2：部品箱'], visible: true, editable: false, required: false },
                 { name: 'QR/バーコード', type: 'text', visible: true, editable: false, required: false }
             ]
@@ -164,12 +164,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // クイック検索モーダルのイベント設定
         const qsCloseBtn = document.getElementById('quick-search-close-btn');
         if (qsCloseBtn) qsCloseBtn.onclick = closeQuickSearch;
-        
+
         const qsInput = document.getElementById('quick-search-input');
         if (qsInput) qsInput.oninput = () => { if (typeof window.applyQuickSearchFilter === 'function') window.applyQuickSearchFilter(); };
 
         // クイック検索モーダル外クリックで閉じる
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             const modal = document.getElementById('quick-search-modal');
             if (event.target == modal) {
                 closeQuickSearch();
@@ -214,18 +214,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log("System initialization completed successfully.");
     } catch (error) {
         console.error("Critical System Error:", error);
-        
+
         // 認証エラー(401)の場合はアラートを出さずhandleUnauthorizedに任せる
         if (error.message.includes("Unauthorized") || error.message.includes("401")) {
             handleUnauthorized();
         } else {
             alert("システムの起動中に致命的なエラーが発生しました。\n\nエラー内容: " + error.message);
         }
-        
+
         // エラー時はコンテナを隠したままにする
         const appContainer = document.querySelector('.app-container');
         if (appContainer) appContainer.style.display = 'none';
-        
+
         setupNavigation();
     }
 
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (response.data.historyData && response.data.historyData.isRaw) {
                     // 生データをキャッシュに保持（マージ用）
                     lastRawData = Object.assign({}, lastRawData, response.data.historyData.rawData);
-                    
+
                     const processed = processClientData(lastRawData, scope);
                     lastHistoryData = processed;
                 } else {
@@ -385,7 +385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // フィルタリング（期間とステータス）
             const filtered = records.filter(r => {
                 const status = (r['ステータス'] || "").toString().trim();
-                
+
                 // 終了済みステータスの判定
                 let isFinished = excludeList.includes(status);
 
@@ -472,22 +472,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
 
-                const funcMap = { 'T_仕入': '仕入', 'T_経費': '経費', 'T_製造': '製造', 'T_販売': '販売' };
-                const priorities = statusPriorityMap[funcMap[sheetName]] || {};
+            const funcMap = { 'T_仕入': '仕入', 'T_経費': '経費', 'T_製造': '製造', 'T_販売': '販売' };
+            const priorities = statusPriorityMap[funcMap[sheetName]] || {};
 
-                history[sheetName] = filtered
-                    .filter(r => !excludeList.includes((r['ステータス'] || "").toString().trim()))
-                    .sort((a, b) => {
-                        // 1. ステータス優先度 (昇順: マスタの表示順)
-                        const pA = priorities[(a['ステータス'] || "").toString().trim()] || 999;
-                        const pB = priorities[(b['ステータス'] || "").toString().trim()] || 999;
-                        if (pA !== pB) return pA - pB;
+            history[sheetName] = filtered
+                .filter(r => !excludeList.includes((r['ステータス'] || "").toString().trim()))
+                .sort((a, b) => {
+                    // 1. ステータス優先度 (昇順: マスタの表示順)
+                    const pA = priorities[(a['ステータス'] || "").toString().trim()] || 999;
+                    const pB = priorities[(b['ステータス'] || "").toString().trim()] || 999;
+                    if (pA !== pB) return pA - pB;
 
-                        // 2. 日付 (昇順: 古い順)
-                        const dA = new Date(a['入庫日'] || a['完了日'] || a['取引完了日'] || a['仕入日'] || a['製造完了日'] || a['販売開始日'] || a['製造開始日'] || 0);
-                        const dB = new Date(b['入庫日'] || b['完了日'] || b['取引完了日'] || b['仕入日'] || b['製造完了日'] || b['販売開始日'] || b['製造開始日'] || 0);
-                        return dA - dB;
-                    });
+                    // 2. 日付 (昇順: 古い順)
+                    const dA = new Date(a['入庫日'] || a['完了日'] || a['取引完了日'] || a['仕入日'] || a['製造完了日'] || a['販売開始日'] || a['製造開始日'] || 0);
+                    const dB = new Date(b['入庫日'] || b['完了日'] || b['取引完了日'] || b['仕入日'] || b['製造完了日'] || b['販売開始日'] || b['製造開始日'] || 0);
+                    return dA - dB;
+                });
         }
 
         const recentActions = recentAll
@@ -559,7 +559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const sExpected = document.getElementById('sales-expected-total');
         if (sExpected) sExpected.textContent = `¥${Math.round(summary.expectedSales || 0).toLocaleString()}`;
-        
+
         const sCompleted = document.getElementById('sales-completed-count');
         if (sCompleted) sCompleted.textContent = (summary.completedSalesCount || 0);
 
@@ -620,7 +620,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (statuses.has(currentStatus)) statusSelect.value = currentStatus;
         if (buyers.has(currentBuyer)) buyerSelect.value = currentBuyer;
     }
-    
+
     /**
      * 製造履歴のフィルターオプションを更新する
      */
@@ -664,12 +664,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * 製造履歴にフィルターを適用
      */
-    window.applyManufacturingHistoryFilter = function() {
+    window.applyManufacturingHistoryFilter = function () {
         if (!lastHistoryData || !lastHistoryData.history) return;
         renderHistoryCards('manufacturing', lastHistoryData.history['T_製造']);
     };
 
-    window.applySalesHistoryFilter = function() {
+    window.applySalesHistoryFilter = function () {
         if (!lastHistoryData || !lastHistoryData.history) return;
         renderHistoryCards('sales', lastHistoryData.history['T_販売']);
     };
@@ -744,7 +744,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const bodyData = Object.assign({ action: action, key: currentAuthKey }, payload);
-        
+
         if (!currentAuthKey && action !== 'getInitData') {
             console.warn(`[fetchAPI] Warning: No auth key for action: ${action}`);
         }
@@ -779,7 +779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 throw new Error("Network response was not ok: " + response.status);
             }
-            
+
             const result = await response.json();
             if (result.status === 'error' && result.message.includes('Unauthorized')) {
                 console.error(`[fetchAPI] Unauthorized error for action: ${action}`, result);
@@ -847,15 +847,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     method: 'POST',
                     body: JSON.stringify(bodyData)
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.status === 'success') {
                     // 認証成功
                     currentAuthKey = password;
                     localStorage.setItem('inventory_auth_key', password);
                     document.getElementById('login-modal').style.display = 'none';
-                    
+
                     // システムコンテナを表示（重要：ブランク画面回避）
                     const appContainer = document.querySelector('.app-container');
                     if (appContainer) {
@@ -1005,15 +1005,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
-        
+
         const menuRebuildStockBtn = document.getElementById('menu-rebuild-stock-btn');
         if (menuRebuildStockBtn) {
             menuRebuildStockBtn.addEventListener('click', async () => {
                 sideMenu.classList.remove('open');
                 menuOverlay.classList.remove('visible');
-                
+
                 if (!confirm('在庫の全再集計を実行しますか？\n(スプレッドシートの手修正内容が在庫合計に反映されます)')) return;
-                
+
                 setLoading(true, '在庫データを再計算中...');
                 try {
                     const res = await fetchAPI('rebuildInventorySummary');
@@ -1135,9 +1135,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (stocktakeBar) stocktakeBar.style.display = isStocktakeMode ? 'flex' : 'none';
 
-                    // 棚卸モード開始時にセッション状態をリセット
-                    stocktakeData = {};
-                    stocktakeSession.verifiedItems.clear();
+                // 棚卸モード開始時にセッション状態をリセット
+                stocktakeData = {};
+                stocktakeSession.verifiedItems.clear();
 
                 // 再描画
                 applyStockFilters();
@@ -1225,17 +1225,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const listId = elmId + '-list';
                 input.setAttribute('list', listId);
                 input.placeholder = (ctrl['画面上の項目名'] || '品名') + 'を検索・入力';
-                
+
                 // datalistがない場合は作成
                 if (!document.getElementById(listId)) {
                     const dl = document.createElement('datalist');
                     dl.id = listId;
                     elm.parentNode.appendChild(dl);
                 }
-                
+
                 // プレビュー用のIDなどを保持している可能性を考慮し、元の要素のクラスなども一部引き継ぐ
                 input.className = elm.className;
-                
+
                 elm.parentNode.replaceChild(input, elm);
                 // 変数 elm を新しい要素に更新して以降の処理へ
                 elm = input;
@@ -1277,12 +1277,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (masterData && masterData.length > 0) {
                             const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称', '商品ID', '仕入先ID', '売先ID', '発送ID', '仕訳ID', '画像URL'];
                             const priorityFields = ['品名', '完成品名', '名称', 'ステータス名称', '仕入先', '売先', '発送方法', '仕訳名'];
-                            
+
                             let keyField = priorityFields.find(k => masterData[0].hasOwnProperty(k));
                             if (!keyField) {
                                 keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
                             }
-                            
+
                             if (keyField) options = masterData.map(r => r[keyField]);
                         }
                     }
@@ -1341,7 +1341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const inStockOnly = inStockOnlyChip ? inStockOnlyChip.classList.contains('active') : false;
         const noStockOnly = noStockOnlyChip ? noStockOnlyChip.classList.contains('active') : false;
         const stockAlertOnly = stockAlertChip ? stockAlertChip.classList.contains('active') : false;
-        
+
         // カテゴリチップの選択状態を取得
         const activeCategoryChips = document.querySelectorAll('.dynamic-chips-wrapper .filter-chip.active');
         const activeCategories = Array.from(activeCategoryChips).map(c => c.getAttribute('data-category'));
@@ -1354,13 +1354,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const filtered = allStockProducts.filter(p => {
             const name = String(p['品名'] || "").toLowerCase();
             const category = String(p['カテゴリ'] || p['商品区分'] || "").toLowerCase();
-            
+
             // マスタからJANコードとIDを補完して検索対象にする
             const itemInMaster = (currentMasters['M_商品'] || []).find(m => m['品名'] === p['品名']);
-            const id = String( (itemInMaster && itemInMaster['商品ID']) || p['商品ID'] || "").toLowerCase();
-            const barcode = String( (itemInMaster && itemInMaster['QR/バーコード']) || p['QR/バーコード'] || "").toLowerCase();
+            const id = String((itemInMaster && itemInMaster['商品ID']) || p['商品ID'] || "").toLowerCase();
+            const barcode = String((itemInMaster && itemInMaster['QR/バーコード']) || p['QR/バーコード'] || "").toLowerCase();
             const location = String(p['保管場所'] || (itemInMaster && itemInMaster['保管場所']) || "").toLowerCase();
-            
+
             const useFlag = parseInt(p['使用FLG']) !== 0;
             const threshold = parseFloat(p['閾値']) || 0;
             const stock = parseFloat(p['現在庫数']) || 0;
@@ -1373,7 +1373,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchesInStock = !inStockOnly || stock > 0;
             const matchesNoStock = !noStockOnly || stock === 0;
             const matchesStockAlert = !stockAlertOnly || (stock <= threshold && threshold > 0);
-            
+
             // カテゴリフィルタ (複数選択時はOR条件)
             const matchesCategory = activeCategories.length === 0 || activeCategories.some(ac => category.includes(ac.toLowerCase()));
 
@@ -1382,13 +1382,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 優先度と表示順によるソート (提案10)
         filtered.sort((a, b) => {
-            const prioA = parseInt(a['優先度']) || 999; 
+            const prioA = parseInt(a['優先度']) || 999;
             const prioB = parseInt(b['優先度']) || 999;
-            
+
             if (prioA !== prioB) {
                 return prioA - prioB; // 優先度が小さい(1に近い)ものを上に
             }
-            
+
             // 優先度が同じなら表示順
             const orderA = parseInt(a['表示順']) || 999;
             const orderB = parseInt(b['表示順']) || 999;
@@ -1415,7 +1415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // ユニークなカテゴリを抽出 (空文字は除外)
         const categories = [...new Set(allStock.map(p => p['カテゴリ'] || p['商品区分'] || '').filter(c => c))].sort();
-        
+
         // チップのHTML生成
         container.innerHTML = categories.map(cat => `
             <button class="filter-chip ${activeCats.includes(cat) ? 'active' : ''}" data-category="${cat}">
@@ -1529,7 +1529,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     window.applyQuickSearchFilter = function () {
         const keyword = document.getElementById('quick-search-input').value.toLowerCase();
-        const filtered = window.currentQuickSearchOptions.filter(opt => 
+        const filtered = window.currentQuickSearchOptions.filter(opt =>
             opt.toLowerCase().includes(keyword)
         );
         renderQuickSearchList(filtered);
@@ -1560,7 +1560,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('input[list]').forEach(input => {
             // 既にボタンがあるか、特定の除外対象（マスタ編集用など）でなければ追加
             if (input.parentElement.classList.contains('input-with-icon')) return;
-            if (input.id.startsWith('master-')) return; 
+            if (input.id.startsWith('master-')) return;
 
             const wrapper = document.createElement('div');
             wrapper.className = 'input-with-icon';
@@ -1582,7 +1582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const container = saleItemField.closest('.input-with-icon');
         if (!container) return;
-        
+
         const currentVal = saleItemField.value;
         const modeText = document.getElementById('sale-item-mode-text');
 
@@ -1592,7 +1592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             input.id = 'sale-item';
             input.placeholder = '品名を自由入力';
             input.value = currentVal;
-            
+
             container.replaceChild(input, saleItemField);
             if (modeText) modeText.textContent = '(個人用: 自由入力可)';
         } else if (!isPersonal && saleItemField.tagName === 'INPUT') {
@@ -1613,7 +1613,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     select.appendChild(o);
                 });
                 select.value = currentVal;
-                
+
                 container.replaceChild(select, saleItemField);
                 if (modeText) modeText.textContent = '(事業用: リストから選択のみ)';
             } else {
@@ -1706,7 +1706,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 製造：BOM在庫チェック
         const makeItem = document.getElementById('make-item');
         const makeQty = document.getElementById('make-quantity');
-        
+
         if (makeItem && !makeItem.dataset.bomBound) {
             makeItem.dataset.bomBound = "true";
             const bomCheckUpdate = () => {
@@ -1729,7 +1729,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (typeof updateSaleStockCheck === 'function') {
                     updateSaleStockCheck(itemName, saleQty ? saleQty.value : '');
                 }
-                
+
                 // 価格の自動補完 (提案35対応 & バグ修正)
                 if (itemName) {
                     const priceInput = document.getElementById('sale-price');
@@ -1741,7 +1741,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (isItemChanged || isPriceEmpty || isAutoPrice) {
                             let suggestedPrice = null;
-                            
+
                             // 1. 直近の販売履歴から検索
                             const salesHistory = lastRawData ? lastRawData['T_販売'] : null;
                             if (salesHistory && salesHistory.length > 1) {
@@ -1749,7 +1749,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 const nameIdx = headers.indexOf('品名');
                                 const priceIdx = headers.indexOf('販売価格') !== -1 ? headers.indexOf('販売価格') : headers.indexOf('価格');
                                 const statusIdx = headers.indexOf('ステータス');
-                                
+
                                 for (let i = salesHistory.length - 1; i >= 1; i--) {
                                     const row = salesHistory[i];
                                     if (row[nameIdx] === itemName && row[statusIdx] === '完了' && row[priceIdx]) {
@@ -1758,7 +1758,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     }
                                 }
                             }
-                            
+
                             // 2. 履歴になければ商品マスタから取得
                             if (!suggestedPrice && currentMasters && currentMasters['M_商品']) {
                                 const product = currentMasters['M_商品'].find(p => p['品名'] === itemName);
@@ -1766,7 +1766,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     suggestedPrice = product['販売単価'];
                                 }
                             }
-                            
+
                             if (suggestedPrice) {
                                 priceInput.value = suggestedPrice;
                                 priceInput.dataset.lastAutoPrice = suggestedPrice; // 自動入力値を記憶
@@ -1832,7 +1832,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         configs.forEach(conf => {
             const btns = [document.getElementById(conf.btnId)];
-            
+
             // 販売登録の場合は「入金待ち」ボタンも対象に含める
             if (conf.btnId === 'sale-submit') {
                 const pendingBtn = document.getElementById('sale-submit-pending');
@@ -1863,33 +1863,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     // 経費タブの特別なフラグ取得
                     if (conf.btnId === 'exp-submit') {
-                    const stockCb = document.getElementById('exp-is-stock');
-                    payload.isStock = (stockCb && stockCb.checked) ? 1 : 0;
-                    const rctCb = document.getElementById('exp-receipt');
-                    payload.receipt = (rctCb && rctCb.checked) ? 1 : 0;
-                }
+                        const stockCb = document.getElementById('exp-is-stock');
+                        payload.isStock = (stockCb && stockCb.checked) ? 1 : 0;
+                        const rctCb = document.getElementById('exp-receipt');
+                        payload.receipt = (rctCb && rctCb.checked) ? 1 : 0;
+                    }
 
-                // Add Sale Type and Shipping Payer for sales
-                if (conf.btnId === 'sale-submit') {
-                    const typeRadio = document.querySelector('input[name="sales-type"]:checked');
-                    payload.type = typeRadio ? typeRadio.value : 'business';
+                    // Add Sale Type and Shipping Payer for sales
+                    if (conf.btnId === 'sale-submit') {
+                        const typeRadio = document.querySelector('input[name="sales-type"]:checked');
+                        payload.type = typeRadio ? typeRadio.value : 'business';
 
-                    const payerRadio = document.querySelector('input[name="sale-shipping-payer"]:checked');
-                    payload.shippingPayer = payerRadio ? payerRadio.value : '出品者';
-                }
+                        const payerRadio = document.querySelector('input[name="sale-shipping-payer"]:checked');
+                        payload.shippingPayer = payerRadio ? payerRadio.value : '出品者';
+                    }
 
-                // --- 登録前バリデーション ---
-                const error = validateData(conf.sheet, payload);
-                if (error) {
-                    alert(`入力エラー:\n${error}`);
-                    return;
-                }
+                    // --- 登録前バリデーション ---
+                    const error = validateData(conf.sheet, payload);
+                    if (error) {
+                        alert(`入力エラー:\n${error}`);
+                        return;
+                    }
 
-                await handleSubmission(btn, conf.sheet, payload);
+                    await handleSubmission(btn, conf.sheet, payload);
+                });
             });
         });
-    });
-}
+    }
 
     /**
      * 共通バリデーションロジック
@@ -1950,7 +1950,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (rule.required) {
                 // 購入予定の場合はすべての必須チェックをスキップ (提案30: 柔軟なワークフロー)
                 const isPlanned = (data.status === '購入予定');
-                
+
                 if (!isPlanned) {
                     if (val === undefined || val === null || val === '' || (typeof val === 'number' && isNaN(val))) {
                         return `「${rule.label}」を入力してください。`;
@@ -1978,16 +1978,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!isPersonalSales) {
                     const masterName = el.dataset.master;
                     const masterData = currentMasters[masterName] || [];
-                    
+
                     // 除外フィールドを考慮して品名などのキーフィールドを特定
                     const excludeFields = ['表示順', '使用FLG', 'カテゴリ', '手数料率', '送料', '用途区分', '説明', 'デフォルト仕訳', '役割（タイプ）', '対象機能', '画面名称', '商品ID', '仕入先ID', '売先ID', '発送ID', '仕訳ID', '画像URL'];
                     const priorityFields = ['品名', '完成品名', '名称', 'ステータス名称', '仕入先', '売先', '発送方法', '仕訳名'];
-                    
+
                     let keyField = priorityFields.find(k => masterData.length > 0 && masterData[0].hasOwnProperty(k));
                     if (!keyField && masterData.length > 0) {
                         keyField = Object.keys(masterData[0]).find(k => !excludeFields.includes(k));
                     }
-                    
+
                     if (keyField) {
                         const exists = masterData.some(r => String(r[keyField]) === String(val));
                         if (!exists) {
@@ -2024,10 +2024,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.disabled = true;
         setLoading(true, 'データを登録中...');
 
-        const refreshScope = (sheet === 'T_仕入') ? 'purchase' : 
-                           (sheet === 'T_経費') ? 'expense' : 
-                           (sheet === 'T_製造') ? 'manufacturing' : 
-                           (sheet === 'T_販売') ? 'sales' : 'all';
+        const refreshScope = (sheet === 'T_仕入') ? 'purchase' :
+            (sheet === 'T_経費') ? 'expense' :
+                (sheet === 'T_製造') ? 'manufacturing' :
+                    (sheet === 'T_販売') ? 'sales' : 'all';
 
         try {
             const response = await fetchAPI('registerTransaction', { sheet: sheet, data: data, scope: refreshScope });
@@ -2042,7 +2042,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     inputs.forEach(input => {
                         input.value = '';
                     });
-                    
+
                     // 販売タブの場合は数量を1にリセット (提案35)
                     if (sheet === 'T_販売') {
                         const qtyInput = document.getElementById('sale-quantity');
@@ -2076,21 +2076,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // 履歴と在庫状況を即時更新してUIに反映 (高速化対応)
                 if (response.newRecord && response.sheetName) {
                     console.time('Client:IncrementalUpdate(New)');
-                    
+
                     // 1. 履歴データの生データを更新
                     if (!lastRawData[response.sheetName]) lastRawData[response.sheetName] = [];
                     lastRawData[response.sheetName].push(response.newRecord);
-                    
+
                     // 2. 在庫集計が同梱されている場合は更新
                     if (response.inventorySummary) {
                         currentMasters['T_在庫集計'] = response.inventorySummary;
                     }
-                    
+
                     // 3. 全データを再集計・再描画
                     const processed = processClientData(lastRawData);
                     lastHistoryData = processed;
                     renderAllHistory(processed);
-                    
+
                     console.timeEnd('Client:IncrementalUpdate(New)');
                 } else if ((response.data && response.data.historyData) || response.historyData) {
                     // 履歴データが含まれている場合の処理
@@ -2170,7 +2170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         safeData.forEach(row => {
             const itemName = row['品名'];
-            const category = row['カテゴリ'] || row['商品区分'] || ''; 
+            const category = row['カテゴリ'] || row['商品区分'] || '';
             const rawQty = parseFloat(row['現在庫数']);
             const stockQty = isNaN(rawQty) ? 0 : rawQty;
 
@@ -2179,7 +2179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const useFlag = parseInt(row['使用FLG']) !== 0;
 
             const lastStocktakeDate = row['最終棚卸日'] ? new Date(row['最終棚卸日']) : null;
-            const isRecent = lastStocktakeDate && (Math.abs(now - lastStocktakeDate) / (1000*60*60*24) <= 30);
+            const isRecent = lastStocktakeDate && (Math.abs(now - lastStocktakeDate) / (1000 * 60 * 60 * 24) <= 30);
             const isVerified = isRecent || stocktakeSession.verifiedItems.has(itemName);
 
             const card = document.createElement('div');
@@ -2491,18 +2491,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const closeBtn = document.getElementById('scanner-close-btn');
         const fileBtn = document.getElementById('scanner-file-btn');
         const fileInput = document.getElementById('qr-file-input');
- 
+
         if (topScanBtn) topScanBtn.addEventListener('click', () => startScanner());
         if (bottomScanBtn) bottomScanBtn.addEventListener('click', () => startScanner());
         if (closeBtn) closeBtn.addEventListener('click', () => stopScanner());
-        
+
         if (fileBtn) fileBtn.addEventListener('click', () => fileInput.click());
         if (fileInput) {
             fileInput.addEventListener('change', e => {
                 if (e.target.files.length === 0) return;
                 const file = e.target.files[0];
                 if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-                
+
                 showToast('画像を解析中...', 'info');
                 html5QrCode.scanFile(file, true)
                     .then(decodedText => {
@@ -2520,7 +2520,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function startScanner() {
         const overlay = document.getElementById('scanner-overlay');
         overlay.style.display = 'flex';
-        
+
         if (typeof showToast === 'function') showToast('カメラを起動しています...', 'info');
 
         if (!html5QrCode) {
@@ -2540,7 +2540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (errorName === "NotAllowedError") msg += "\nカメラの使用許可を確認してください。";
                 else if (errorName === "NotFoundError") msg += "\nカメラが見つかりません。";
                 else msg += "\n詳細: " + err;
-                
+
                 alert(msg);
                 overlay.style.display = 'none';
             });
@@ -2565,7 +2565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             '4_押入上1：部品1', '5_押入上2：部品2', '6_押入上3：梱包2',
             '7_押入下1：サブ2', '8_押入下2：部品箱'
         ];
-        
+
         let targetLoc = null;
         if (decodedText.startsWith('LOC-')) {
             targetLoc = decodedText.replace('LOC-', '');
@@ -2585,7 +2585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // 検索窓に値をセット
                 searchInput.value = targetLoc;
                 searchInput.dispatchEvent(new Event('input')); // 検索実行
-                
+
                 if (typeof showToast === 'function') showToast(`場所「${targetLoc}」で絞り込みました`, 'success');
             }
             return;
@@ -2707,7 +2707,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.time('Client:MergeAndRender');
                     // 取得した部分的なデータを既存の生データにマージ
                     lastRawData = Object.assign({}, lastRawData, response.data.rawData);
-                    
+
                     // マージ後の全データを使用して、フィルタリングと集計を再実行
                     const processed = processClientData(lastRawData);
                     lastHistoryData = processed;
@@ -2804,7 +2804,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tab === 'sales') {
             const statusFilter = document.getElementById('sales-history-status-filter')?.value;
             const buyerFilter = document.getElementById('sales-history-buyer-filter')?.value;
-            
+
             if (statusFilter) {
                 renderData = renderData.filter(item => (item['ステータス'] || '').trim() === statusFilter);
             }
@@ -2814,7 +2814,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (tab === 'manufacturing') {
             const statusFilter = document.getElementById('manufacturing-history-status-filter')?.value;
             const itemFilter = document.getElementById('manufacturing-history-item-filter')?.value;
-            
+
             if (statusFilter) {
                 renderData = renderData.filter(item => (item['ステータス'] || '').trim() === statusFilter);
             }
@@ -2879,7 +2879,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const createInputHtml = (label, header, value, logicalId, typeOverride = null, isReadOnly = false) => {
             const setting = getFieldSetting(logicalId);
             const type = typeOverride || setting['タイプ'] || 'text';
-            
+
             if (isReadOnly) {
                 const displayVal = (type === 'number' && typeof value === 'number') ? value.toLocaleString() : (value || '-');
                 return `<div class="input-group mini"><label>${label}</label><div class="static-value">${displayVal}</div></div>`;
@@ -3119,7 +3119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (res.status === 'success') {
                 showToast("部材を追加し、単価を再計算しました。");
                 document.getElementById('add-material-modal').classList.remove('active');
-                
+
                 // 履歴データを更新して再描画
                 if (res.historyData && res.historyData.rawData) {
                     lastRawData = Object.assign({}, lastRawData, res.historyData.rawData);
@@ -3171,8 +3171,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // M_画面制御から設定を取得を試みる
         const masters = currentMasters['M_画面制御'] || [];
-        const ctrl = masters.find(m => 
-            (m['画面名称'] === actionName || m['対象機能'] === actionName) && 
+        const ctrl = masters.find(m =>
+            (m['画面名称'] === actionName || m['対象機能'] === actionName) &&
             (m['画面上の項目名'] === label || m['項目名'] === label)
         );
 
@@ -3188,7 +3188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             const refMasterName = ctrl ? ctrl['参照マスタ'] : 'M_区分';
             const masterData = currentMasters[refMasterName] || currentMasters['M_カテゴリ'] || currentMasters['M_区分'] || [];
-            
+
             const categories = masterData
                 .filter(c => {
                     // 使用FLGが1のもののみ
@@ -3201,7 +3201,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             options += categories.map(c => {
                 // カラム名の揺れに対応 (区分名 / 区分名称 / 項目名 / カテゴリ)
-                const val = c['区分名'] || c['区分名称'] || c['項目名'] || c['仕訳名'] || c['カテゴリ'] || Object.values(c)[1]; 
+                const val = c['区分名'] || c['区分名称'] || c['項目名'] || c['仕訳名'] || c['カテゴリ'] || Object.values(c)[1];
                 if (!val) return '';
                 const selected = val === currentValue ? 'selected' : '';
                 return `<option value="${val}" ${selected}>${val}</option>`;
@@ -3277,7 +3277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             'sales': 'T_販売'
         };
         const sheetName = sheetNameMap[currentTab];
-        
+
         if (sheetName) {
             const isPlanned = (newStatus === '購入予定');
             // 基礎データの構築
@@ -3340,9 +3340,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         setLoading(true, 'データを更新中...');
 
         const refreshScope = id.startsWith('A') ? 'purchase' :
-                           id.startsWith('E') ? 'expense' :
-                           id.startsWith('M') ? 'manufacturing' :
-                           id.startsWith('S') ? 'sales' : 'all';
+            id.startsWith('E') ? 'expense' :
+                id.startsWith('M') ? 'manufacturing' :
+                    id.startsWith('S') ? 'sales' : 'all';
 
         try {
             const response = await fetchAPI('updateTransaction', {
@@ -3357,33 +3357,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response.status === 'success') {
                 btn.innerHTML = '<ion-icon name="checkmark-outline"></ion-icon>';
                 showToast(`${id} の更新が完了しました`);
-                
+
                 // 応答に同梱された差分データで即時更新
                 if (response.newRecord && response.sheetName) {
                     console.time('Client:IncrementalUpdate(Update)');
-                    
+
                     // 1. 該当レコードの生データを特定して置換
                     const sheetData = lastRawData[response.sheetName] || [];
                     const idColIdx = 0; // 常に1列目がID
                     const targetId = id;
                     const rowIndex = sheetData.findIndex(r => r[idColIdx] == targetId);
-                    
+
                     if (rowIndex !== -1) {
                         sheetData[rowIndex] = response.newRecord;
                     } else {
                         sheetData.push(response.newRecord);
                     }
-                    
+
                     // 2. 在庫集計が同梱されている場合は更新
                     if (response.inventorySummary) {
                         currentMasters['T_在庫集計'] = response.inventorySummary;
                     }
-                    
+
                     // 3. 全データを再集計・再描画
                     const processed = processClientData(lastRawData);
                     lastHistoryData = processed;
                     renderAllHistory(processed);
-                    
+
                     console.timeEnd('Client:IncrementalUpdate(Update)');
                 } else if ((response.data && response.data.historyData) || response.historyData) {
                     // 履歴データが含まれている場合の処理
@@ -3730,7 +3730,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const d = parseNumber(row['諸会費']);
                 const f = parseNumber(row['支払手数料']);
                 const ms = parseNumber(row['雑費']);
-                
+
                 const rowCost = p + c + r + sp + d + f + ms;
                 const rowProfit = s - rowCost;
 
@@ -3762,7 +3762,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const rounded = Math.round(val || 0);
                 if (el) el.textContent = rounded > 0 ? '¥' + rounded.toLocaleString() : (rounded < 0 ? '-¥' + Math.abs(rounded).toLocaleString() : '0');
             };
-            
+
             // 明細表のフッターは、表内の合計値と一致させる
             updateEl('ledger-total-sales', tableSalesTotal);
             updateEl('ledger-total-purchase', tableCostTotal);
@@ -4150,7 +4150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const name = (m['完成品名'] || m['品名'] || m['商品名'] || '').toString().trim();
                 return name === itemName.trim() && !['完了', 'キャンセル'].includes(m['ステータス']);
             }).reduce((sum, m) => sum + (parseFloat(m['数量'] || m['製造数量']) || 0), 0);
-            
+
             const purTotal = activePur.filter(p => {
                 const name = (p['品名'] || p['商品名'] || '').toString().trim();
                 // 「注文済み」のみを仕入中とする（購入予定は別途集計）
@@ -4163,7 +4163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const name = (item['品名'] || '').toString().trim();
                 return name === itemName.trim() && item['ステータス'] === '購入予定';
             }).reduce((sum, item) => sum + (parseFloat(item['数量']) || 0), 0);
-            
+
             let statusBadge = '';
             let badges = [];
             if (mfgTotal > 0) {
@@ -4186,7 +4186,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const isMade = (category === '商品' || category === 'パーツ2');
             const isExpense = (category === '経費');
-            
+
             let actionBtn = '';
             if (isMade) {
                 actionBtn = `<button class="alert-btn make" onclick="jumpToTab('manufacturing', '${itemName}')"><ion-icon name="hammer-outline"></ion-icon>製造へ</button>`;
@@ -4233,7 +4233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const el = document.getElementById(inputId);
                 if (el) {
                     el.value = itemName;
-                    
+
                     // 履歴から詳細データを自動セット (Proposal 36)
                     autoPopulateFromHistory(tabId, itemName);
 
@@ -4317,7 +4317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (match) {
                     const op = match[1] || '>=';
                     const targetVal = parseFloat(match[2]);
-                    
+
                     const inStockItems = stockData.filter(stock => {
                         const currentVal = parseFloat(stock['現在庫数']) || 0;
                         if (op === '>=' || op === '以上') return currentVal >= targetVal;
@@ -4358,11 +4358,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         chips.forEach(chip => {
             chip.addEventListener('click', () => {
                 chip.classList.toggle('active');
-                
+
                 if (chip.getAttribute('data-filter') === 'unchecked') {
                     stocktakeSession.uncheckedOnly = chip.classList.contains('active');
                 }
-                
+
                 applyStockFilters();
             });
         });
@@ -4419,8 +4419,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!container) return;
 
         if (title) {
-            title.textContent = (mode === 'master') ? 'マスタ管理' : 
-                              (mode === 'system') ? 'システム設定' : '設定・マスタ管理';
+            title.textContent = (mode === 'master') ? 'マスタ管理' :
+                (mode === 'system') ? 'システム設定' : '設定・マスタ管理';
         }
 
         const masterConfig = {
@@ -4439,7 +4439,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         container.innerHTML = '';
         Object.keys(masterConfig).forEach(mkey => {
             const conf = masterConfig[mkey];
-            
+
             // モードによるフィルタリング
             if (mode !== 'all' && conf.type !== mode) return;
 
@@ -4480,7 +4480,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px;">データがありません</td></tr>`;
                 return;
             }
-            
+
             const headers = rawData[0];
             const data = rawData.slice(1).map(row => {
                 const obj = {};
@@ -4492,7 +4492,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const schema = MASTER_SCHEMAS[masterKey];
             const rawKeys = Object.keys(data[0]).filter(k => k !== '最終更新日' && k.trim() !== "");
             let keys = [];
-            
+
             if (schema) {
                 console.log(`Applying schema for ${masterKey}:`, schema);
                 // 1. シートにある列のうち、表示すべきものだけを抽出 (トリムして比較)
@@ -4501,7 +4501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const f = schema.fields.find(field => field.name.trim() === cleanRK);
                     return f ? f.visible !== false : true;
                 });
-                
+
                 // 2. スキーマの定義順に従って並び替え
                 keys.sort((a, b) => {
                     const idxA = schema.fields.findIndex(f => f.name.trim() === a.trim());
@@ -4634,7 +4634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         targetKeys.forEach((key) => {
             const group = document.createElement('div');
             group.className = 'input-group';
-            
+
             const fieldConfig = schema ? schema.fields.find(f => f.name === key) : null;
             const value = rowData ? rowData[key] : '';
             const isId = fieldConfig ? (schema.key === key) : (keys.indexOf(key) === 0);
@@ -4663,15 +4663,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const filteredRef = fieldConfig.filter ? refData.filter(fieldConfig.filter) : refData;
                     options = filteredRef.map(r => r['品名'] || r[Object.keys(r)[0]]);
                 }
-                
+
                 inputHtml = `
                     <select name="${key}" ${!isEditable ? 'disabled class="readonly-field"' : ''}>
                         <option value="">選択してください</option>
                         ${options.map(opt => {
-                            const val = typeof opt === 'object' ? opt.v : opt;
-                            const lbl = typeof opt === 'object' ? opt.l : opt;
-                            return `<option value="${val}" ${val == value ? 'selected' : ''}>${lbl}</option>`;
-                        }).join('')}
+                    const val = typeof opt === 'object' ? opt.v : opt;
+                    const lbl = typeof opt === 'object' ? opt.l : opt;
+                    return `<option value="${val}" ${val == value ? 'selected' : ''}>${lbl}</option>`;
+                }).join('')}
                     </select>
                 `;
             } else if (type === 'textarea') {
@@ -4785,19 +4785,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // マスタ編集用スキャナー起動
-    window.triggerMasterScanner = function(btn) {
+    window.triggerMasterScanner = function (btn) {
         const input = btn.previousElementSibling;
         const originalOnScanSuccess = window.onScanSuccess;
-        
+
         // 一時的なスキャン成功時処理
-        window.onScanSuccess = function(decodedText) {
+        window.onScanSuccess = function (decodedText) {
             input.value = decodedText;
             stopScanner();
             showToast('バーコードを読み取りました', 'success');
             // 元の処理に戻す
             window.onScanSuccess = originalOnScanSuccess;
         };
-        
+
         startScanner();
     };
 
@@ -5019,11 +5019,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const componentName = bom['部品'];
             const neededPerOne = parseFloat(bom['数量']) || 0;
             const totalNeeded = neededPerOne * targetQty;
-            
+
             // 現在庫の取得 (T_在庫集計)
             const stockItem = (currentMasters['T_在庫集計'] || []).find(s => s['品名'] === componentName);
             const currentStock = stockItem ? parseFloat(stockItem['現在庫数']) || 0 : 0;
-            
+
             const isOk = currentStock >= totalNeeded;
             if (!isOk) allOk = false;
 
@@ -5040,8 +5040,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const summary = document.createElement('div');
         summary.className = `bom-status-summary ${allOk ? 'ok' : 'ng'}`;
-        summary.innerHTML = allOk ? 
-            '<ion-icon name="checkmark-circle" style="vertical-align: middle; margin-right: 4px;"></ion-icon> 在庫はすべて足りています' : 
+        summary.innerHTML = allOk ?
+            '<ion-icon name="checkmark-circle" style="vertical-align: middle; margin-right: 4px;"></ion-icon> 在庫はすべて足りています' :
             '<ion-icon name="warning-outline" style="vertical-align: middle; margin-right: 4px;"></ion-icon> 一部の部品が不足しています';
         resultList.appendChild(summary);
     }
@@ -5051,10 +5051,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * 現在の入力内容を買い物カゴに追加
      */
-    window.addItemToBasket = function(type) {
+    window.addItemToBasket = function (type) {
         const prefix = type === 'purchase' ? 'buy' : 'exp';
         const data = {};
-        
+
         // 共通・個別項目の取得
         if (type === 'purchase') {
             data.date = document.getElementById('purchase-date').value;
@@ -5088,7 +5088,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // カゴに追加
         window.registrationBasket.push({ type, data });
-        
+
         // 入力欄のクリア（共通項目以外）
         document.getElementById(`${prefix}-item`).value = "";
         document.getElementById(`${prefix}-price`).value = "";
@@ -5098,7 +5098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (previewEl) previewEl.innerHTML = "";
 
         renderBasket();
-        
+
         // フィードバック
         const btn = document.getElementById(`${prefix}-add-basket`);
         if (btn) {
@@ -5154,7 +5154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * カゴからアイテムを削除
      */
-    window.removeFromBasket = function(index) {
+    window.removeFromBasket = function (index) {
         window.registrationBasket.splice(index, 1);
         renderBasket();
     };
@@ -5162,7 +5162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * カゴを空にする
      */
-    window.clearBasket = function() {
+    window.clearBasket = function () {
         if (!confirm("リストの内容をすべて破棄しますか？")) return;
         window.registrationBasket = [];
         renderBasket();
@@ -5171,15 +5171,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * 一括登録を実行
      */
-    window.submitBulkRegistration = async function() {
+    window.submitBulkRegistration = async function () {
         if (window.registrationBasket.length === 0) return;
-        
+
         const total = window.registrationBasket.reduce((sum, item) => sum + item.data.price, 0);
         if (!confirm(`${window.registrationBasket.length}件の明細（合計 ¥${total.toLocaleString()}）を一括登録しますか？`)) return;
 
         setLoading(true, "一括登録中...");
         try {
-            const result = await fetchAPI('registerBulk', { 
+            const result = await fetchAPI('registerBulk', {
                 transactions: window.registrationBasket,
                 scope: 'all'
             });
@@ -5188,7 +5188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showToast("一括登録が完了しました。");
                 window.registrationBasket = [];
                 renderBasket();
-                
+
                 // 履歴・在庫データの更新フローを既存処理(handleSubmission)と同期
                 if (result.historyData && result.historyData.rawData) {
                     // 生データをマージ
@@ -5206,13 +5206,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (result.masterAdded) {
                     initSystem();
                 }
-                
+
                 // フォームをリセット（共通項目も含む）
                 const buyVendor = document.getElementById('buy-vendor');
                 if (buyVendor) buyVendor.value = "";
                 const expVendor = document.getElementById('exp-vendor');
                 if (expVendor) expVendor.value = "";
-                
+
             } else {
                 showToast("登録エラー: " + result.message, 'error');
             }
@@ -5227,10 +5227,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // イベントリスナーの設定
     const buyAddBtn = document.getElementById('buy-add-basket');
     if (buyAddBtn) buyAddBtn.onclick = () => window.addItemToBasket('purchase');
-    
+
     const expAddBtn = document.getElementById('exp-add-basket');
     if (expAddBtn) expAddBtn.onclick = () => window.addItemToBasket('expense');
-    
+
     document.querySelectorAll('.bulk-submit-btn').forEach(btn => {
         btn.onclick = window.submitBulkRegistration;
     });
